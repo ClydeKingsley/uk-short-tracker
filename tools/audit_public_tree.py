@@ -1,4 +1,4 @@
-"""Fail-closed privacy and hygiene audit for the future public repository."""
+"""Fail-closed privacy and hygiene audit for the public repository."""
 
 from __future__ import annotations
 

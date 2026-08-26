@@ -37,6 +37,6 @@ local path or personal information.
   signing, network access, and clean-VM coverage.
 
 The maintainer retains final decisions on financial definitions and release
-scope. Until a project `LICENSE` is selected, contributions cannot be accepted
-under a declared open-source licence; the repository should remain a private
-release candidate.
+scope. Contributions are accepted under the project's [MIT License](LICENSE);
+by submitting a contribution, you agree that it may be distributed under those
+terms.

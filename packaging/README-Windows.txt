@@ -14,10 +14,10 @@ ENGLISH
    app creates no Windows scheduled task and leaves no resident service.
 5. Initial/manual/automatic FCA sync and optional Yahoo price requests need
    internet access.
-6. The app can check GitHub Release metadata only after its canonical public
-   owner/repository is configured. Those values are currently empty, so update
-   checking reports "not configured" and makes no GitHub request. Short Tracker
-   never downloads or installs an application update automatically.
+6. On launch, and at most once per 24 hours unless the user explicitly requests
+   a fresh check, the app reads public Release metadata only from
+   ClydeKingsley/uk-short-tracker on GitHub. It sends no GitHub token and never
+   downloads or installs an application update automatically.
 7. Frozen-EXE user data is stored under %LOCALAPPDATA%\ShortTracker\data and is
    not inside this program folder. Source mode instead defaults to
    <PROJECT>\data. Upgrading or deleting this program folder does not delete the
@@ -45,9 +45,9 @@ LICENSES. The overview is THIRD-PARTY-NOTICES.txt.
 4. 程序打开期间可按 6、12 或 24 小时自动同步 FCA，默认是 6 小时。关闭窗口后
    调度器随即停止；程序不创建 Windows 计划任务，也不留下常驻服务。
 5. 首次、手动或自动 FCA 同步以及可选的 Yahoo 价格查询需要联网。
-6. 只有在正式 GitHub owner/repository 配置完成后，程序才会检查 Release 元数据。
-   当前配置为空，所以更新检查会显示“未配置”，不会请求 GitHub。Short Tracker
-   绝不会自动下载或安装软件更新。
+6. 程序启动时会检查 GitHub 公开 Release 元数据；除非用户明确要求重新检查，否则
+   24 小时内最多联网一次。唯一来源是 ClydeKingsley/uk-short-tracker，检查不发送
+   GitHub token，且 Short Tracker 绝不会自动下载或安装软件更新。
 7. 冻结 EXE 的用户数据保存在 %LOCALAPPDATA%\ShortTracker\data，不在程序目录内；
    源码模式默认使用 <项目目录>\data。升级或删除程序目录不会删除冻结版的数据库、
    FCA 归档、设置或缓存。

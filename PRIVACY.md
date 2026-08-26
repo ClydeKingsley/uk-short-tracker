@@ -13,18 +13,18 @@ The application may make these outbound HTTPS requests:
 | `www.fca.org.uk` | initial, manual, or app-open automatic FCA sync | download public disclosure and reportable-share files |
 | `query1.finance.yahoo.com` | optional price request | retrieve chart/latest market-price observations |
 | `query2.finance.yahoo.com` | optional symbol search | suggest London ticker candidates for human review |
-| `api.github.com` | application-update metadata check, only after a canonical repository is configured | read public Release version and asset metadata; no asset download or installation |
+| `api.github.com` | app-launch update check (normally at most once per 24 hours) or an explicit manual recheck | read public Release version and asset metadata from `ClydeKingsley/uk-short-tracker`; no asset download or installation |
 
 Yahoo endpoints are unofficial public web endpoints and may change, rate-limit,
 or return incomplete data. No brokerage order or account request is made.
 
 The GitHub update checker sends no GitHub token and returns only strictly
-validated version, Release-page, and Windows asset metadata. It does not
-download an application ZIP, execute an installer, or replace program files.
-The canonical GitHub owner and repository are intentionally unconfigured in the
-current release candidate, so this check is disabled and no GitHub request is
-made. If the user later clicks a validated Release-page link, the resulting page
-navigation is an explicit user action outside the metadata check.
+validated version, Release-page, and Windows asset metadata from the canonical
+`ClydeKingsley/uk-short-tracker` repository. It runs on app launch when the
+24-hour cache is due; a user can also request a fresh check. It does not download
+an application ZIP, execute an installer, or replace program files. If the user
+clicks a validated Release-page link, the resulting page navigation is an
+explicit user action outside the metadata check.
 
 ## Automatic FCA sync lifecycle
 

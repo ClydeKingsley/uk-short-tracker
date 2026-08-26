@@ -84,8 +84,9 @@ Short Tracker：
 - 只监听 `127.0.0.1`；
 - 首次、手动或应用打开期间的自动同步只下载 FCA 公开披露文件；
 - 仅在可选 ticker 搜索和价格查询时访问 Yahoo Finance；
-- 仅在正式 owner/repository 配置完成后访问 `api.github.com` 检查公开 Release
-  元数据，不会自动下载或安装更新；
+- 程序启动且 24 小时缓存到期时，仅访问 `api.github.com` 检查
+  `ClydeKingsley/uk-short-tracker` 的公开 Release 元数据；不发送 GitHub token，
+  也不会自动下载或安装更新；
 - 关闭桌面窗口后会停止本地服务和 FCA 自动同步，不创建 Windows 计划任务；
 - 没有遥测；
 - 不连接券商或交易账户；

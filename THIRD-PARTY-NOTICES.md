@@ -67,15 +67,16 @@ files, the lock and this review must be updated rather than silently accepting
 them.
 
 FCA files and Yahoo responses are runtime data sources, not redistributed
-release assets. When a canonical public repository is configured, Short Tracker
-may also query GitHub's public Releases API for version and asset metadata. The
-current owner/repository configuration is empty, so that check is disabled.
-The update checker does not download or install Release assets.
+release assets. Short Tracker may also query GitHub's public Releases API for
+version and asset metadata from the canonical `ClydeKingsley/uk-short-tracker`
+repository. The update checker sends no GitHub token and does not download or
+install Release assets.
 
 Short Tracker is not affiliated with or endorsed by the FCA, Yahoo, GitHub, or
 Microsoft. FCA public information may be subject to its own terms and statutory
 context; Yahoo market data is subject to Yahoo's terms and limitations; GitHub
 API and Microsoft runtime use remain subject to their respective terms.
 
-This notice does not select or replace the Short Tracker project licence. The
-generated dependency and licence inventory must be reviewed with every release.
+This notice does not replace the Short Tracker MIT License, distributed as
+`LICENSE` in source and `LICENSE.txt` in the Windows package. The generated
+dependency and licence inventory must be reviewed with every release.

@@ -106,8 +106,9 @@ Short Tracker:
 - downloads public disclosure files from the FCA for initial, manual, or
   app-open automatic syncs;
 - contacts Yahoo Finance only for optional symbol search and price data;
-- when a canonical repository is configured, contacts `api.github.com` only to
-  check public Release metadata; it does not download or install updates;
+- on app launch when its 24-hour cache is due, contacts `api.github.com` only
+  for public Release metadata from `ClydeKingsley/uk-short-tracker`; it sends no
+  GitHub token and does not download or install updates;
 - stops its local service and automatic FCA scheduler when the desktop window
   closes, and creates no Windows scheduled task;
 - has no telemetry;
