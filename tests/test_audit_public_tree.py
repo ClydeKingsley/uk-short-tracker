@@ -72,9 +72,10 @@ class PublicTreeAuditTests(unittest.TestCase):
 
         self.assertEqual(result, 1)
         self.assertEqual(stdout.getvalue(), "")
-        self.assertIn("finding details were suppressed", stderr.getvalue())
-        self.assertNotIn(value, stderr.getvalue())
-        self.assertNotIn(str(root), stderr.getvalue())
+        self.assertEqual(
+            stderr.getvalue(),
+            "Public-tree audit failed; finding details were suppressed to protect sensitive data.\n",
+        )
 
 
 if __name__ == "__main__":
