@@ -1286,6 +1286,16 @@ class ShortTrackerRequestHandler(BaseHTTPRequestHandler):
         relative = unquote(request_path).lstrip("/") or "index.html"
         if "\x00" in relative or any(ord(char) < 32 for char in relative):
             raise APIError(HTTPStatus.BAD_REQUEST, "静态文件路径无效。", code="invalid_path")
+        # Treat a backslash as a path separator on every platform.  Windows
+        # ``Path`` already does so; rejecting it explicitly keeps Linux CI and
+        # Windows production behaviour identical and prevents encoded
+        # ``..\\`` traversal attempts from degrading to an ambiguous 404.
+        if "\\" in relative:
+            raise APIError(
+                HTTPStatus.FORBIDDEN,
+                "禁止访问该路径。",
+                code="path_outside_web_root",
+            )
         web_root = self.app.web_dir.resolve()
         candidate = self._confined_static_path(web_root / relative, web_root)
         if candidate.is_dir():
