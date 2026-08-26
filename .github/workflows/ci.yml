@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source-tests:
+    name: Source tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            python: "3.11"
+          - os: ubuntu-24.04
+            python: "3.12"
+          - os: ubuntu-24.04
+            python: "3.13"
+          - os: ubuntu-24.04
+            python: "3.14"
+          - os: windows-2025
+            python: "3.11"
+          - os: windows-2025
+            python: "3.14"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Install project
+        run: python -m pip install -e .
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+  public-tree-audit:
+    name: Public tree audit
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Scan repository history for secrets
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+      - name: Audit tracked public files
+        run: python -m tools.audit_public_tree .
+      - name: Verify source version and changelog
+        run: python -m tools.verify_version --root .
+
+  windows-bundle-smoke:
+    name: Windows x64 bundle smoke
+    runs-on: windows-2025
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up locked uv-managed Python 3.11.15 x64
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.11.29"
+          python-version: "3.11.15"
+          activate-environment: true
+          venv-path: .build-venv
+          no-project: true
+          enable-cache: true
+          cache-python: true
+          cache-dependency-glob: requirements-build.lock
+      - name: Install locked build dependencies
+        run: uv pip install --python .build-venv/Scripts/python.exe --require-hashes -r requirements-build.lock
+      - name: Build and smoke-test private preview
+        shell: pwsh
+        run: >-
+          ./packaging/Build-WindowsRelease.ps1
+          -AllowMissingLicense
+          -SkipTests
+      - name: Verify frozen runtime without Python on PATH
+        shell: pwsh
+        run: |
+          $archive = (Get-ChildItem -LiteralPath dist -Filter 'Short-Tracker-*-windows-x64.zip' -File | Select-Object -First 1).FullName
+          ./packaging/Test-NoPythonRuntime.ps1 -Archive $archive
+      - name: Confirm no release asset is tracked
+        shell: pwsh
+        run: |
+          $tracked = git ls-files -- 'dist/*' 'build/*' '*.exe' '*.zip'
+          if ($tracked) { throw "Generated release files are tracked: $tracked" }

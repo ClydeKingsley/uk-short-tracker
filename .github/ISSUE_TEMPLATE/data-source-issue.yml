@@ -1,0 +1,50 @@
+name: Public data or methodology issue
+description: Report a discrepancy using public FCA evidence.
+title: "[Data]: "
+labels: [data, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Cite public FCA evidence only. Do not submit brokerage, account, portfolio, order, or private financial data.
+  - type: input
+    id: version
+    attributes:
+      label: Short Tracker version
+    validations:
+      required: true
+  - type: input
+    id: fca_url
+    attributes:
+      label: FCA source URL
+    validations:
+      required: true
+  - type: input
+    id: isin
+    attributes:
+      label: ISIN or public security identifier
+  - type: input
+    id: position_date
+    attributes:
+      label: Position date
+      placeholder: YYYY-MM-DD
+  - type: textarea
+    id: displayed
+    attributes:
+      label: Value or behaviour shown by Short Tracker
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected value and calculation basis
+      description: Explain disclosure regime, threshold, grain, dates, and any aggregation.
+    validations:
+      required: true
+  - type: checkboxes
+    id: public_only
+    attributes:
+      label: Evidence confirmation
+      options:
+        - label: All evidence is public FCA material; I included no account, trade, portfolio, or credential data.
+          required: true

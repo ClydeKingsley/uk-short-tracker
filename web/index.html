@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#f4f2ed" />
+    <meta
+      id="pageDescription"
+      name="description"
+      content="英国 FCA 股票公开净空头仓位与价格走势对照工具。"
+    />
+    <title>UK Short Tracker · 英国净空头仓位追踪</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/i18n.js" defer></script>
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content" data-i18n="skip.main">跳到主要内容</a>
+
+    <div class="app-shell">
+      <header class="topbar" aria-label="应用顶栏" data-i18n-aria-label="topbar.aria">
+        <a class="brand" href="/" aria-label="UK Short Tracker 首页" data-i18n-aria-label="brand.home">
+          <span class="brand-mark" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </span>
+          <span class="brand-copy">
+            <strong>Short Tracker</strong>
+            <small>UK public disclosures</small>
+          </span>
+        </a>
+
+        <form class="security-search" id="securitySearch" role="search" autocomplete="off">
+          <label class="sr-only" for="securitySearchInput" data-i18n="search.label">搜索公司、Ticker 或 ISIN</label>
+          <span class="search-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <circle cx="11" cy="11" r="6.5"></circle>
+              <path d="m16 16 4.25 4.25"></path>
+            </svg>
+          </span>
+          <input
+            id="securitySearchInput"
+            type="search"
+            inputmode="search"
+            placeholder="搜索公司、Ticker 或 ISIN"
+            data-i18n-placeholder="search.placeholder"
+            role="combobox"
+            aria-autocomplete="list"
+            aria-controls="securitySearchResults"
+            aria-expanded="false"
+            aria-activedescendant=""
+          />
+          <span class="search-spinner" id="searchSpinner" aria-hidden="true"></span>
+          <button class="search-clear" id="searchClear" type="button" aria-label="清除搜索" data-i18n-aria-label="search.clear" hidden>
+            <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+              <path d="m5 5 10 10M15 5 5 15"></path>
+            </svg>
+          </button>
+          <div
+            class="autocomplete"
+            id="securitySearchResults"
+            role="listbox"
+            aria-label="证券搜索结果"
+            data-i18n-aria-label="search.resultsAria"
+            hidden
+          ></div>
+        </form>
+
+        <div class="topbar-actions">
+          <div class="connection-pill is-loading" id="connectionStatus" role="status">
+            <span class="connection-dot" aria-hidden="true"></span>
+            <span id="connectionLabel" data-i18n="connection.connecting">正在连接</span>
+          </div>
+          <button class="button button-primary sync-button" id="syncButton" type="button">
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+              <path d="M20 7v5h-5"></path>
+              <path d="M4 17v-5h5"></path>
+              <path d="M6.1 8.4A7 7 0 0 1 18.6 7L20 12M4 12l1.4 5a7 7 0 0 0 12.5-1.4"></path>
+            </svg>
+            <span data-i18n="sync.button">同步数据</span>
+          </button>
+          <button
+            class="icon-button settings-button"
+            id="settingsButton"
+            type="button"
+            title="自动同步与软件更新"
+            data-i18n-title="settings.open"
+            aria-label="打开自动同步与软件更新设置"
+            data-i18n-aria-label="settings.openAria"
+          >
+            <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3A1.7 1.7 0 0 0 10 3v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"></path>
+            </svg>
+          </button>
+          <div class="language-switch" id="languageSwitch" role="group" aria-label="界面语言" data-i18n-aria-label="language.aria">
+            <button type="button" data-language="zh-CN" aria-pressed="true" aria-label="切换到中文" data-i18n-aria-label="language.chinese" lang="zh-CN">中</button>
+            <button type="button" data-language="en-GB" aria-pressed="false" aria-label="Switch to English" data-i18n-aria-label="language.english" lang="en">EN</button>
+          </div>
+        </div>
+      </header>
+
+      <div class="connection-banner" id="connectionBanner" role="alert" hidden>
+        <div>
+          <strong data-i18n="connection.errorTitle">暂时无法连接本地数据服务</strong>
+          <span id="connectionMessage" data-i18n="connection.errorDetail">请确认服务已启动后重试。</span>
+        </div>
+        <button class="button button-quiet" id="retryStatusButton" type="button" data-i18n="connection.retry">重新连接</button>
+      </div>
+
+      <aside class="update-banner" id="updateBanner" aria-live="polite" hidden>
+        <span class="update-banner-icon" aria-hidden="true">↑</span>
+        <div>
+          <strong id="updateBannerTitle">Short Tracker 更新可用</strong>
+          <span id="updateBannerDetail">可以从官方 GitHub Release 查看并下载。</span>
+        </div>
+        <button class="button button-secondary" id="openReleaseButton" type="button" data-i18n="update.openRelease">查看更新</button>
+        <button class="icon-button update-dismiss" id="dismissUpdateButton" type="button" aria-label="暂时关闭更新提示" data-i18n-aria-label="update.dismiss">
+          <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"></path></svg>
+        </button>
+      </aside>
+
+      <main id="main-content" tabindex="-1">
+        <section class="welcome-state" id="securityEmpty" aria-labelledby="welcomeTitle" hidden>
+          <div class="welcome-visual" aria-hidden="true">
+            <span class="welcome-axis welcome-axis-x"></span>
+            <span class="welcome-axis welcome-axis-y"></span>
+            <svg viewBox="0 0 260 150" focusable="false">
+              <path class="welcome-step" d="M18 43h45v18h49V52h44v27h42V66h44"></path>
+              <path class="welcome-line" d="M18 122c24-2 29-25 51-23 25 2 29 14 51 5 29-12 30-36 57-31 18 3 29 15 65-6"></path>
+              <path class="welcome-marker" d="M155 22v112"></path>
+            </svg>
+            <span class="welcome-badge">FCA</span>
+          </div>
+          <div class="welcome-copy">
+            <p class="eyebrow">UK SHORT SELLING DISCLOSURES</p>
+            <h1 id="welcomeTitle" data-i18n="welcome.title">把公开空头仓位与股价放在同一条时间轴上</h1>
+            <p data-i18n="welcome.body">
+              搜索英国市场公司，即可对照旧制度下的实名仓位披露、2026 年起的匿名汇总
+              ANSP，以及每日收盘价。
+            </p>
+            <button class="button button-primary" id="focusSearchButton" type="button">
+              <span data-i18n="welcome.cta">开始搜索</span>
+              <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+                <path d="M4 10h12M11 5l5 5-5 5"></path>
+              </svg>
+            </button>
+          </div>
+        </section>
+
+        <section class="rankings-view" id="rankingsView" aria-labelledby="rankingsTitle">
+          <header class="rankings-hero">
+            <div class="rankings-intro">
+              <p class="eyebrow">FCA · AGGREGATED NET SHORT POSITIONS</p>
+              <h1 id="rankingsTitle" data-i18n="ranking.title">当前做空比例排行榜</h1>
+              <p class="rankings-lead" data-i18n="ranking.lead">
+                按 FCA 当前 ANSP 快照中的公开汇总比例排序。点击公司即可进入个股仓位与收盘价双图。
+              </p>
+              <div class="rankings-context" aria-label="排行榜口径" data-i18n-aria-label="ranking.contextAria">
+                <span><i class="context-dot" aria-hidden="true"></i><span data-i18n="ranking.contextAggregate">ANSP 匿名汇总</span></span>
+                <span data-i18n="ranking.contextThreshold">基础报告门槛 0.2%</span>
+                <span id="rankingTotalBadge" data-i18n="ranking.totalLoading">正在读取证券…</span>
+              </div>
+            </div>
+
+            <aside class="ranking-snapshot" aria-label="排行榜数据快照" data-i18n-aria-label="snapshot.aria">
+              <div class="snapshot-heading">
+                <div>
+                  <span class="eyebrow">SNAPSHOT HEALTH</span>
+                  <strong id="rankingSnapshotHeadline" data-i18n="snapshot.loading">正在连接 FCA 当前快照…</strong>
+                </div>
+                <span class="freshness-orb is-loading" id="rankingSnapshotOrb" aria-hidden="true"></span>
+              </div>
+              <dl class="snapshot-facts">
+                <div>
+                  <dt data-i18n="snapshot.latestDate">最新持仓日期</dt>
+                  <dd id="rankingAsOfDate">—</dd>
+                </div>
+                <div>
+                  <dt data-i18n="snapshot.checkedSync">快照检查 / 同步</dt>
+                  <dd id="rankingSnapshotUpdated">—</dd>
+                </div>
+                <div>
+                  <dt data-i18n="snapshot.source">来源</dt>
+                  <dd id="rankingSource">FCA ANSP</dd>
+                </div>
+                <div>
+                  <dt data-i18n="snapshot.coverage">载入覆盖</dt>
+                  <dd id="rankingCoverage">—</dd>
+                </div>
+              </dl>
+            </aside>
+          </header>
+
+          <div class="rankings-status ranking-loading" id="rankingsLoading" role="status">
+            <span class="large-spinner" aria-hidden="true"></span>
+            <strong data-i18n="rankings.loadingTitle">正在载入当前排行榜</strong>
+            <span data-i18n="rankings.loadingDetail">读取 FCA ANSP 当前快照与持仓日期</span>
+          </div>
+
+          <div class="rankings-status rankings-error" id="rankingsError" role="alert" hidden>
+            <span class="state-icon state-icon-error" aria-hidden="true">!</span>
+            <strong data-i18n="rankings.errorTitle">排行榜暂时无法读取</strong>
+            <span id="rankingsErrorMessage" data-i18n="rankings.errorDetail">请确认本地服务已启动后重试。</span>
+            <button class="button button-secondary" id="retryRankingsButton" type="button" data-i18n="rankings.retry">重新载入排行榜</button>
+          </div>
+
+          <div class="rankings-status rankings-empty" id="rankingsEmpty" role="status" hidden>
+            <span class="state-icon" aria-hidden="true">
+              <svg viewBox="0 0 48 48" focusable="false">
+                <path d="M8 38V12M8 38h34"></path>
+                <path d="M14 31h8M14 24h16M14 17h24"></path>
+              </svg>
+            </span>
+            <strong data-i18n="rankings.emptyTitle">当前快照没有可排行记录</strong>
+            <span data-i18n="rankings.emptyDetail">空列表不等于确认市场不存在公开空头仓位。</span>
+          </div>
+
+          <div class="rankings-content" id="rankingsContent" hidden>
+            <section class="ranking-chart-card" aria-labelledby="rankingChartTitle">
+              <header class="ranking-card-header">
+                <div>
+                  <p class="eyebrow">TOP 8 · CURRENT SNAPSHOT</p>
+                  <h2 id="rankingChartTitle" data-i18n="ranking.chartTitle">当前公开净空头比例最高的证券</h2>
+                  <p data-i18n="ranking.chartDetail">同一指标、零基线；标签显示精确百分比。</p>
+                </div>
+                <span class="ranking-unit" data-i18n="ranking.unit">占已发行股本 %</span>
+              </header>
+              <div
+                class="ranking-bars"
+                id="rankingsBarChart"
+                role="list"
+                aria-label="当前公开净空头比例最高的八只证券"
+                data-i18n-aria-label="ranking.chartAria"
+                aria-describedby="rankingMethodNote"
+              ></div>
+              <div class="ranking-axis" aria-hidden="true">
+                <span>0%</span>
+                <span id="rankingAxisMax">—</span>
+              </div>
+            </section>
+
+            <section class="ranking-table-card" aria-labelledby="rankingTableTitle">
+              <header class="ranking-table-header">
+                <div>
+                  <p class="eyebrow">ALL CURRENT RECORDS</p>
+                  <h2 id="rankingTableTitle" data-i18n="ranking.tableTitle">完整排行榜</h2>
+                  <p id="rankingTableSummary" aria-live="polite">—</p>
+                </div>
+                <div class="ranking-table-controls">
+                  <label class="ranking-filter" for="rankingSearchInput">
+                    <span class="sr-only" data-i18n="ranking.filterLabel">在当前排行榜中搜索</span>
+                    <svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">
+                      <circle cx="11" cy="11" r="6.5"></circle>
+                      <path d="m16 16 4.25 4.25"></path>
+                    </svg>
+                    <input id="rankingSearchInput" type="search" placeholder="筛选公司、Ticker 或 ISIN" data-i18n-placeholder="ranking.filterPlaceholder" />
+                  </label>
+                  <label class="page-size-control" for="rankingPageSize">
+                    <span data-i18n="ranking.perPage">每页</span>
+                    <select id="rankingPageSize">
+                      <option value="25" selected>25</option>
+                      <option value="50">50</option>
+                    </select>
+                  </label>
+                </div>
+              </header>
+
+              <div class="ranking-table-scroll" tabindex="0" aria-label="排行榜表格，可横向滚动" data-i18n-aria-label="ranking.tableScrollAria">
+                <table class="ranking-table" id="rankingTable">
+                  <thead>
+                    <tr>
+                      <th scope="col" data-sort-column="rank" aria-sort="ascending">
+                        <button type="button" data-ranking-sort="rank"><span data-i18n="ranking.columnRank">排名</span><span class="sort-indicator" aria-hidden="true"></span></button>
+                      </th>
+                      <th scope="col" data-sort-column="name" aria-sort="none">
+                        <button type="button" data-ranking-sort="name"><span data-i18n="ranking.columnCompany">公司 / 证券</span><span class="sort-indicator" aria-hidden="true"></span></button>
+                      </th>
+                      <th scope="col" data-sort-column="shortPercent" aria-sort="none" class="numeric-column">
+                        <button type="button" data-ranking-sort="shortPercent"><span data-i18n="ranking.columnAnsp">当前 ANSP</span><span class="sort-indicator" aria-hidden="true"></span></button>
+                      </th>
+                      <th scope="col" data-sort-column="positionTime" aria-sort="none">
+                        <button type="button" data-ranking-sort="positionTime"><span data-i18n="ranking.columnDate">FCA 持仓日期</span><span class="sort-indicator" aria-hidden="true"></span></button>
+                      </th>
+                      <th scope="col" data-sort-column="ageDays" aria-sort="none" class="numeric-column">
+                        <button type="button" data-ranking-sort="ageDays"><span data-i18n="ranking.columnAge">距今天数</span><span class="sort-indicator" aria-hidden="true"></span></button>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody id="rankingTableBody"></tbody>
+                </table>
+              </div>
+
+              <footer class="ranking-pagination">
+                <p id="rankingPageStatus">—</p>
+                <div class="pagination-buttons" aria-label="排行榜分页" data-i18n-aria-label="ranking.paginationAria">
+                  <button class="button button-quiet" id="rankingPreviousPage" type="button" data-i18n="ranking.previous">上一页</button>
+                  <span id="rankingPageNumber" aria-live="polite">第 1 / 1 页</span>
+                  <button class="button button-quiet" id="rankingNextPage" type="button" data-i18n="ranking.next">下一页</button>
+                </div>
+              </footer>
+            </section>
+
+            <aside class="ranking-method" id="rankingMethodNote" aria-labelledby="rankingMethodTitle">
+              <span class="method-icon" aria-hidden="true">i</span>
+              <div>
+                <h2 id="rankingMethodTitle" data-i18n="ranking.methodTitle">排行榜口径</h2>
+                <p data-i18n="ranking.methodBody">
+                  这是 FCA 当前 ANSP 快照中达到报告门槛仓位的匿名汇总，不是全市场 short interest。低于门槛的仓位不会计入。
+                  每行“FCA 持仓日期”是该聚合计算所含通知里的最近持仓日期；当前快照可保留日期较早的记录，这不等同于快照本身过期。
+                </p>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <div id="securityWorkspace" hidden>
+          <nav class="detail-navigation" aria-label="详情导航" data-i18n-aria-label="detail.navAria">
+            <button class="back-to-rankings" id="backToRankingsButton" type="button">
+              <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+                <path d="M16 10H4M9 5l-5 5 5 5"></path>
+              </svg>
+              <span data-i18n="detail.back">返回当前排行榜</span>
+            </button>
+          </nav>
+          <section class="security-hero" aria-labelledby="securityName">
+            <div class="security-identity">
+              <div class="identity-row">
+                <span class="market-badge" id="securityMarket" data-i18n="security.ukMarket">英国市场</span>
+                <span class="regime-badge" id="currentRegimeBadge" data-i18n="security.currentAnsp">当前：ANSP 汇总披露</span>
+              </div>
+              <h1 id="securityName">—</h1>
+              <div class="security-meta" aria-label="证券信息" data-i18n-aria-label="security.infoAria">
+                <span><b id="securityTicker">—</b><small>Ticker</small></span>
+                <span><b id="securityIsin">—</b><small>ISIN</small></span>
+                <span><b id="securityPriceSymbol" data-i18n="common.unmatched">未匹配</b><small data-i18n="security.priceSymbol">行情代码</small></span>
+              </div>
+            </div>
+
+            <aside class="data-provenance" aria-label="数据来源与新鲜度" data-i18n-aria-label="provenance.aria">
+              <div class="provenance-heading">
+                <div>
+                  <span class="eyebrow">DATA HEALTH</span>
+                  <strong id="freshnessHeadline" data-i18n="provenance.loading">正在读取数据…</strong>
+                </div>
+                <span class="freshness-orb is-loading" id="freshnessOrb" aria-hidden="true"></span>
+              </div>
+              <div class="chip-row">
+                <span class="source-chip">
+                  <span class="chip-dot chip-dot-short" aria-hidden="true"></span>
+                  <span id="shortSourceChip" data-i18n="provenance.shortSourceEmpty">空头来源 · —</span>
+                </span>
+                <span class="source-chip">
+                  <span class="chip-dot chip-dot-price" aria-hidden="true"></span>
+                  <span id="priceSourceChip" data-i18n="provenance.priceSourceEmpty">行情来源 · —</span>
+                </span>
+              </div>
+              <div class="provenance-actions">
+                <span id="lastUpdatedText" data-i18n="provenance.lastSyncEmpty">最后同步：—</span>
+                <button class="text-button" id="openPriceDialogButton" type="button">
+                  <span data-i18n="provenance.matchPrice">匹配行情代码</span>
+                  <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+                    <path d="M7 13 13 7M8 6l1-1a3 3 0 0 1 4 4l-1 1M12 14l-1 1a3 3 0 0 1-4-4l1-1"></path>
+                  </svg>
+                </button>
+              </div>
+            </aside>
+          </section>
+
+          <section class="kpi-grid" aria-label="关键指标" data-i18n-aria-label="kpi.aria">
+            <article class="kpi-card kpi-card-primary">
+              <div class="kpi-label">
+                <span data-i18n="kpi.latestShort">最新公开净空头</span>
+                <span class="metric-info" tabindex="0" data-tooltip="2026-07-13 后为 FCA ANSP；此前为达到 0.5% 公开门槛的旧制仓位。" data-i18n-tooltip="kpi.shortTooltip" aria-label="指标说明：2026-07-13 后为 FCA ANSP；此前为达到 0.5% 公开门槛的旧制仓位。" data-i18n-aria-label="kpi.shortTooltipAria">i</span>
+              </div>
+              <strong class="kpi-value" id="kpiShort">—</strong>
+              <p id="kpiShortMeta" data-i18n="kpi.waitingShort">等待公开仓位数据</p>
+            </article>
+
+            <article class="kpi-card">
+              <div class="kpi-label"><span data-i18n="kpi.rangeChange">所选区间变化</span></div>
+              <strong class="kpi-value" id="kpiChange">—</strong>
+              <p id="kpiChangeMeta" data-i18n="kpi.rangeBasis">按图表当前可见范围计算</p>
+            </article>
+
+            <article class="kpi-card">
+              <div class="kpi-label"><span data-i18n="kpi.latestClose">最新收盘价</span></div>
+              <strong class="kpi-value" id="kpiPrice">—</strong>
+              <p id="kpiPriceMeta" data-i18n="kpi.waitingPrice">等待行情数据</p>
+            </article>
+
+            <article class="kpi-card">
+              <div class="kpi-label"><span data-i18n="kpi.coverage">可用数据跨度</span></div>
+              <strong class="kpi-value kpi-value-compact" id="kpiCoverage">—</strong>
+              <p id="kpiCoverageMeta" data-i18n="kpi.coverageBasis">公开仓位与行情的联合覆盖</p>
+            </article>
+          </section>
+
+          <section class="chart-card" aria-labelledby="chartTitle">
+            <header class="chart-header">
+              <div>
+                <p class="eyebrow">POSITION × PRICE</p>
+                <h2 id="chartTitle" data-i18n="chart.title">公开净空头仓位与收盘价</h2>
+                <div class="chart-legend" aria-label="图例" data-i18n-aria-label="chart.legendAria">
+                  <span><i class="legend-line legend-legacy" aria-hidden="true"></i><span data-i18n="chart.legendLegacy">旧制实名仓位 ≥0.5%</span></span>
+                  <span><i class="legend-line legend-ansp" aria-hidden="true"></i><span data-i18n="chart.legendAnsp">ANSP 汇总仓位 ≥0.2%</span></span>
+                  <span><i class="legend-line legend-price" aria-hidden="true"></i><span data-i18n="chart.legendPrice">每日收盘价</span></span>
+                </div>
+              </div>
+
+              <div class="chart-controls">
+                <div class="range-selector" id="rangeSelector" aria-label="时间范围" data-i18n-aria-label="chart.rangeAria">
+                  <button type="button" data-range="1M" aria-pressed="false">1M</button>
+                  <button type="button" data-range="3M" aria-pressed="false">3M</button>
+                  <button type="button" data-range="6M" aria-pressed="false">6M</button>
+                  <button type="button" data-range="YTD" aria-pressed="false">YTD</button>
+                  <button type="button" data-range="1Y" aria-pressed="true">1Y</button>
+                  <button type="button" data-range="3Y" aria-pressed="false">3Y</button>
+                  <button type="button" data-range="5Y" aria-pressed="false">5Y</button>
+                  <button type="button" data-range="MAX" aria-pressed="false">MAX</button>
+                </div>
+                <button class="icon-button" id="resetViewButton" type="button" title="重置图表视图" data-i18n-title="chart.reset" aria-label="重置图表视图" data-i18n-aria-label="chart.reset">
+                  <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+                    <path d="M4 8a6 6 0 1 1 1.7 5.8M4 4v4h4"></path>
+                  </svg>
+                </button>
+              </div>
+            </header>
+
+            <div class="chart-viewport" id="chartViewport">
+              <canvas
+                id="trackerChart"
+                tabindex="0"
+                role="img"
+                aria-label="公开净空头仓位与每日收盘价双面板时间序列图。鼠标滚轮缩放，拖动平移；键盘左右方向键移动读数，正负号缩放。"
+                data-i18n-aria-label="chart.canvasAria"
+                aria-describedby="chartSummary chartInteractionHelp"
+              >
+                <span data-i18n="chart.canvasFallback">您的浏览器不支持 Canvas 图表。请查看页面上的关键指标。</span>
+              </canvas>
+
+              <div class="chart-tooltip" id="chartTooltip" role="status" aria-live="polite" hidden>
+                <div class="tooltip-date" id="tooltipDate">—</div>
+                <dl>
+                  <div id="tooltipLegacyRow"><dt><i class="tooltip-dot dot-legacy"></i><span data-i18n="chart.tooltipLegacy">旧制仓位</span></dt><dd id="tooltipLegacy">—</dd></div>
+                  <div id="tooltipAnspRow"><dt><i class="tooltip-dot dot-ansp"></i>ANSP</dt><dd id="tooltipAnsp">—</dd></div>
+                  <div id="tooltipPriceRow"><dt><i class="tooltip-dot dot-price"></i><span data-i18n="chart.tooltipPrice">收盘价</span></dt><dd id="tooltipPrice">—</dd></div>
+                </dl>
+              </div>
+
+              <div class="chart-state chart-loading" id="chartLoading" role="status">
+                <span class="large-spinner" aria-hidden="true"></span>
+                <strong data-i18n="chart.loadingTitle">正在载入时间序列</strong>
+                <span data-i18n="chart.loadingDetail">同时读取 FCA 公开仓位与每日行情</span>
+              </div>
+
+              <div class="chart-state" id="chartEmpty" hidden>
+                <span class="state-icon" aria-hidden="true">
+                  <svg viewBox="0 0 48 48" focusable="false">
+                    <path d="M8 38V12M8 38h34"></path>
+                    <path d="m13 31 7-8 7 4 10-13"></path>
+                  </svg>
+                </span>
+                <strong data-i18n="chart.emptyTitle">暂无可绘制数据</strong>
+                <span id="chartEmptyMessage" data-i18n="chart.emptyDetail">该证券暂时没有公开仓位或行情记录。</span>
+                <button class="button button-secondary" id="emptyPriceButton" type="button" data-i18n="provenance.matchPrice">匹配行情代码</button>
+              </div>
+
+              <div class="chart-state" id="chartError" hidden>
+                <span class="state-icon state-icon-error" aria-hidden="true">!</span>
+                <strong data-i18n="chart.errorTitle">时间序列读取失败</strong>
+                <span id="chartErrorMessage" data-i18n="chart.errorDetail">请稍后重试。</span>
+                <button class="button button-secondary" id="retrySecurityButton" type="button" data-i18n="chart.retry">重新载入</button>
+              </div>
+            </div>
+
+            <footer class="chart-footer">
+              <p id="chartInteractionHelp">
+                <span aria-hidden="true">↕</span> <span data-i18n="chart.interaction">滚轮缩放 · 拖动平移 · 悬停查看同日数据</span>
+              </p>
+              <p class="regime-note">
+                <span class="regime-marker-swatch" aria-hidden="true"></span>
+                <span data-i18n="chart.regimeNote">2026-07-13：英国公开披露由实名 ≥0.5% 切换为匿名 ANSP 汇总 ≥0.2%</span>
+              </p>
+            </footer>
+            <p class="sr-only" id="chartSummary" data-i18n="chart.summaryEmpty">尚未选择证券。</p>
+          </section>
+
+          <section class="method-note" aria-labelledby="methodTitle">
+            <div class="method-icon" aria-hidden="true">i</div>
+            <div>
+              <h2 id="methodTitle" data-i18n="method.title">如何解读</h2>
+              <p data-i18n="method.bodyOne">
+                ANSP 只汇总单一持有人达到 FCA 0.2% 报告门槛的已通知仓位；低于门槛的仓位不会计入，且仓位在未跨越下一个 0.1
+                个百分点门槛时无需更新。因此，它不是市场全部空头权益（short interest）的精确日度总量。
+              </p>
+              <p data-i18n="method.bodyTwo">
+                旧制实名公开披露截至 2026-07-10；ANSP 新制自 2026-07-13 起适用，通常在持仓日后的第 2 个工作日（T+2）自中午起发布。
+                页面分别标示 FCA 仓位日期与行情日期；行情更新更晚，并不代表 FCA 仓位也已更新。
+              </p>
+            </div>
+          </section>
+        </div>
+      </main>
+
+      <footer class="site-footer">
+        <p>
+          <strong data-i18n="footer.notice">仅供信息参考。</strong>
+          <span data-i18n="footer.disclaimer">本工具展示公开来源数据，不构成投资建议、交易建议或对数据完整性的保证。投资决策请自行判断并核对原始来源。</span>
+        </p>
+        <span>UK Short Tracker</span>
+      </footer>
+    </div>
+
+    <dialog class="price-dialog" id="priceDialog" aria-labelledby="priceDialogTitle">
+      <form method="dialog" class="dialog-shell" id="priceDialogForm">
+        <header class="dialog-header">
+          <div>
+            <p class="eyebrow">PRICE SYMBOL</p>
+            <h2 id="priceDialogTitle" data-i18n="priceDialog.title">匹配行情代码</h2>
+            <p id="priceDialogSecurity" data-i18n="priceDialog.subtitle">为当前证券选择每日价格来源。</p>
+          </div>
+          <button class="icon-button dialog-close" value="cancel" aria-label="关闭行情代码匹配窗口" data-i18n-aria-label="priceDialog.close">
+            <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+              <path d="m5 5 10 10M15 5 5 15"></path>
+            </svg>
+          </button>
+        </header>
+
+        <div class="dialog-body">
+          <label for="priceSearchInput" data-i18n="priceDialog.searchLabel">搜索交易所代码或公司名称</label>
+          <div class="dialog-search-row">
+            <span class="search-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" focusable="false">
+                <circle cx="11" cy="11" r="6.5"></circle>
+                <path d="m16 16 4.25 4.25"></path>
+              </svg>
+            </span>
+            <input id="priceSearchInput" type="search" placeholder="例如：LSEG.L 或 London Stock Exchange" data-i18n-placeholder="priceDialog.searchPlaceholder" />
+            <span class="search-spinner" id="priceSearchSpinner" aria-hidden="true"></span>
+          </div>
+
+          <div class="price-results" id="priceSearchResults" role="listbox" aria-label="行情代码搜索结果" data-i18n-aria-label="priceDialog.resultsAria">
+            <div class="dialog-placeholder">
+              <span aria-hidden="true">⌁</span>
+              <span data-i18n="priceDialog.minChars">输入至少 2 个字符开始搜索</span>
+            </div>
+          </div>
+        </div>
+
+        <footer class="dialog-footer">
+          <p data-i18n="priceDialog.hint">选择后会立即保存，并重新载入该证券的行情序列。</p>
+          <button class="button button-quiet" value="cancel" data-i18n="common.cancel">取消</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <dialog class="price-dialog settings-dialog" id="settingsDialog" aria-labelledby="settingsDialogTitle">
+      <form class="dialog-shell" id="settingsForm">
+        <header class="dialog-header">
+          <div>
+            <p class="eyebrow">AUTOMATION</p>
+            <h2 id="settingsDialogTitle" data-i18n="settings.title">自动同步与软件更新</h2>
+            <p data-i18n="settings.subtitle">控制应用打开期间的数据检查，并查看 Short Tracker 版本状态。</p>
+          </div>
+          <button class="icon-button dialog-close" id="settingsCloseButton" type="button" aria-label="关闭设置窗口" data-i18n-aria-label="settings.close">
+            <svg viewBox="0 0 20 20" focusable="false" aria-hidden="true">
+              <path d="m5 5 10 10M15 5 5 15"></path>
+            </svg>
+          </button>
+        </header>
+
+        <div class="dialog-body settings-body">
+          <section class="settings-section" aria-labelledby="autoSyncTitle">
+            <div class="settings-section-heading">
+              <div>
+                <h3 id="autoSyncTitle" data-i18n="settings.autoSyncTitle">FCA 数据自动同步</h3>
+                <p data-i18n="settings.autoSyncDetail">仅在 Short Tracker 打开期间运行；关闭后会在下次启动时补做过期检查。</p>
+              </div>
+              <label class="switch-control">
+                <input id="autoSyncEnabled" type="checkbox" />
+                <span aria-hidden="true"></span>
+                <b data-i18n="settings.autoSyncEnabled">启用</b>
+              </label>
+            </div>
+            <label class="settings-field" for="autoSyncInterval">
+              <span data-i18n="settings.interval">检查间隔</span>
+              <select id="autoSyncInterval">
+                <option value="6" data-i18n="settings.every6Hours">每 6 小时</option>
+                <option value="12" data-i18n="settings.every12Hours">每 12 小时</option>
+                <option value="24" data-i18n="settings.every24Hours">每 24 小时</option>
+              </select>
+            </label>
+            <dl class="settings-status-grid">
+              <div><dt data-i18n="settings.syncState">当前状态</dt><dd id="settingsSyncState">—</dd></div>
+              <div><dt data-i18n="settings.lastSuccess">最近成功</dt><dd id="settingsLastSuccess">—</dd></div>
+              <div><dt data-i18n="settings.nextCheck">下次检查</dt><dd id="settingsNextCheck">—</dd></div>
+            </dl>
+          </section>
+
+          <section class="settings-section" aria-labelledby="softwareUpdateTitle">
+            <div class="settings-section-heading">
+              <div>
+                <h3 id="softwareUpdateTitle" data-i18n="settings.softwareTitle">Short Tracker 软件版本</h3>
+                <p data-i18n="settings.softwareDetail">只检查官方 GitHub Release；不会静默下载或安装程序。</p>
+              </div>
+              <span class="version-chip" id="currentVersionChip">v—</span>
+            </div>
+            <div class="software-update-status">
+              <strong id="softwareUpdateHeadline" data-i18n="update.notChecked">尚未检查软件更新</strong>
+              <span id="softwareUpdateDetail" data-i18n="update.checkDetail">检查失败不会影响 FCA 数据或现有图表。</span>
+            </div>
+            <div class="settings-inline-actions">
+              <button class="button button-secondary" id="checkUpdateButton" type="button" data-i18n="update.checkNow">立即检查</button>
+              <button class="button button-quiet" id="settingsOpenReleaseButton" type="button" data-i18n="update.openRelease" hidden>查看更新</button>
+            </div>
+          </section>
+        </div>
+
+        <footer class="dialog-footer">
+          <p data-i18n="settings.footer">自动同步失败时会继续保留上一套已验证数据。</p>
+          <div class="dialog-footer-actions">
+            <button class="button button-quiet" id="settingsCancelButton" type="button" data-i18n="common.cancel">取消</button>
+            <button class="button button-primary" id="settingsSaveButton" type="submit" data-i18n="common.save">保存</button>
+          </div>
+        </footer>
+      </form>
+    </dialog>
+
+    <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>
+
+    <noscript>
+      <div class="noscript-message" data-i18n="noscript.message">此工具需要 JavaScript 才能搜索证券并绘制交互图表。</div>
+    </noscript>
+  </body>
+</html>

@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "architecture": "x86_64",
+  "python": {
+    "implementation": "cpython",
+    "version": "3.11.15",
+    "build": "20260623",
+    "distribution": "cpython-3.11.15-windows-x86_64-none",
+    "provider": "Astral uv managed Python",
+    "uv_version": "0.11.29",
+    "source": "https://github.com/astral-sh/python-build-standalone/releases",
+    "license_bytes": 25066,
+    "license_sha256": "886a0ead2d89030ee62dbff52b04e47ab91998341295bb9c56fb952b4e081c7a"
+  },
+  "files": [
+    {
+      "path": "_internal/VCRUNTIME140.dll",
+      "bytes": 124544,
+      "sha256": "d5e4d9a3e835fa679450145d6a7d94e36573a509317111904d9b3712c30d9066",
+      "file_version": "14.44.35211.0"
+    },
+    {
+      "path": "_internal/libcrypto-3-x64.dll",
+      "bytes": 7986688,
+      "sha256": "66348c968f8df22da0975d0141dc027cd0539f84f90d3a40542dd510540c3928",
+      "file_version": "3.5.7"
+    },
+    {
+      "path": "_internal/libffi-8.dll",
+      "bytes": 28160,
+      "sha256": "1fdb7354fdb82f624bc849d8a360e500264fb9ba7171ed5378195cf0b3191073",
+      "file_version": null
+    },
+    {
+      "path": "_internal/libssl-3-x64.dll",
+      "bytes": 1581568,
+      "sha256": "ba74e7e2f65d82edad90cefeae8771c0a2ae1e026a20ba531b9732286ec1ae5e",
+      "file_version": "3.5.7"
+    },
+    {
+      "path": "_internal/python311.dll",
+      "bytes": 5842944,
+      "sha256": "e1b53c741751563eca9eac70378de5be36994adac8c27e8ec375971579e23b50",
+      "file_version": "3.11.15"
+    },
+    {
+      "path": "_internal/sqlite3.dll",
+      "bytes": 1607680,
+      "sha256": "ad5789a6ca5ebac7d7006ec0c897817c574bbf0cab8b386adb82d1ae6c7d6bbf",
+      "file_version": "3.53.1.0"
+    }
+  ]
+}

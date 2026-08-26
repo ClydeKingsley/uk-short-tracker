@@ -1,0 +1,12 @@
+INTERNAL PREVIEW - NOT FOR PUBLIC REDISTRIBUTION
+================================================
+
+The Short Tracker maintainer has not selected a project licence. This preview
+was built only for private technical review and must not be attached to a public
+GitHub Release or described as open source.
+
+内部预览——不得公开再分发
+========================
+
+Short Tracker 维护者尚未选择项目许可证。本预览仅用于私下技术验证，不得上传到
+公开 GitHub Release，也不得称为开源发布版。
