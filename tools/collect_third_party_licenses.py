@@ -163,6 +163,20 @@ class Collector:
     def validate_paths(self) -> None:
         if not self.release_root.is_dir():
             raise ValueError(f"release root does not exist: {self.release_root}")
+        unexpected_system_runtime = sorted(
+            (
+                path.relative_to(self.release_root).as_posix()
+                for path in self.release_root.rglob("*.dll")
+                if path.name.casefold() == "ucrtbase.dll"
+                or path.name.casefold().startswith("api-ms-win-")
+            ),
+            key=str.casefold,
+        )
+        if unexpected_system_runtime:
+            raise ValueError(
+                "system-provided Windows UCRT/API-set DLLs must not be bundled: "
+                + ", ".join(unexpected_system_runtime)
+            )
         if not self.pyz_toc.is_file():
             raise ValueError(f"PyInstaller PYZ table of contents is missing: {self.pyz_toc}")
         if self.output.parent != self.release_root or self.output.name != "LICENSES":

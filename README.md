@@ -21,7 +21,8 @@ separate chart with the same time axis.
 ## Windows release: no Python required
 
 The intended path for ordinary users is the Windows x64 ZIP attached to a
-GitHub Release.
+GitHub Release. The packaged desktop application supports Windows 10 and
+Windows 11 on x64 systems.
 
 1. Download `Short-Tracker-v<VERSION>-windows-x64.zip` and its SHA-256 file.
 2. Use **Extract all**. Do not run an EXE while it is still inside the ZIP.

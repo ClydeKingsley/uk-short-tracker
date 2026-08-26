@@ -18,7 +18,8 @@ Short Tracker 是一个本地运行的 Windows 研究工具。它将 FCA 旧制�
 
 ## 普通 Windows 用户：不需要安装 Python
 
-正式面向普通用户的方式是下载 GitHub Release 中的 Windows x64 ZIP：
+正式面向普通用户的方式是下载 GitHub Release 中的 Windows x64 ZIP；打包的桌面版
+支持 x64 架构的 Windows 10 和 Windows 11：
 
 1. 下载 `Short-Tracker-v<版本>-windows-x64.zip` 和 SHA-256 文件；
 2. 右键选择“全部解压”，不要直接在 ZIP 压缩包内部运行 EXE；

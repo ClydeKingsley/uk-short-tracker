@@ -3,6 +3,8 @@ SHORT TRACKER - WINDOWS QUICK START / WINDOWS 快速开始
 
 ENGLISH
 -------
+Supported operating systems: Windows 10 or Windows 11, x64.
+
 1. Fully extract the ZIP. Do not run the EXE from inside the ZIP viewer.
 2. Double-click the single visible "Short Tracker.exe". It starts the embedded
    loopback service and displays the dashboard in one native pywebview/WebView2
@@ -37,6 +39,8 @@ LICENSES. The overview is THIRD-PARTY-NOTICES.txt.
 
 简体中文
 --------
+支持的操作系统：x64 架构的 Windows 10 或 Windows 11。
+
 1. 请先“全部解压”，不要直接在 ZIP 压缩包窗口内运行 EXE。
 2. 双击唯一可见的“Short Tracker.exe”。它会启动内置的本机服务，并通过
    pywebview/WebView2 在一个原生桌面窗口中显示页面，不需要另开浏览器。

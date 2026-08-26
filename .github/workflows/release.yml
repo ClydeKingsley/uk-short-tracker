@@ -5,6 +5,10 @@ on:
     tags:
       - "v*.*.*"
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-and-attest:
     runs-on: windows-2025
@@ -70,7 +74,7 @@ jobs:
             dist/Short-Tracker-*-windows-x64.zip.sha256
             dist/release-manifest-*.json
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
 
   create-draft-release:
     needs: build-and-attest
@@ -88,13 +92,67 @@ jobs:
         with:
           name: release-assets
           path: release-assets
+      - name: Reverify the exact draft release assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          zip="release-assets/Short-Tracker-v${version}-windows-x64.zip"
+          checksum="${zip}.sha256"
+          manifest="release-assets/release-manifest-v${version}.json"
+
+          mapfile -t files < <(find release-assets -maxdepth 1 -type f -printf '%f\n' | sort)
+          expected=(
+            "Short-Tracker-v${version}-windows-x64.zip"
+            "Short-Tracker-v${version}-windows-x64.zip.sha256"
+            "release-manifest-v${version}.json"
+          )
+          if [[ "${files[*]}" != "${expected[*]}" ]]; then
+            printf 'Unexpected release asset set:\n%s\n' "${files[*]}" >&2
+            exit 1
+          fi
+
+          expected_hash="$(awk 'NR == 1 { print $1 }' "$checksum")"
+          expected_name="$(awk 'NR == 1 { print $2 }' "$checksum")"
+          actual_hash="$(sha256sum "$zip" | awk '{ print $1 }')"
+          if [[ "$expected_hash" != "$actual_hash" || "$expected_name" != "$(basename "$zip")" ]]; then
+            echo 'Release checksum or filename does not match.' >&2
+            exit 1
+          fi
+
+          python3 -m tools.verify_release_archive "$zip"
+          python3 - "$manifest" "$version" <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          expected_version = sys.argv[2]
+          checks = {
+              "version": payload.get("version") == expected_version,
+              "channel": payload.get("channel") == "stable",
+              "data_included": payload.get("data_included") is False,
+              "code_signed": payload.get("code_signed") is False,
+              "git_commit": payload.get("build", {}).get("git_commit")
+              == __import__("os").environ["GITHUB_SHA"],
+          }
+          failed = [name for name, passed in checks.items() if not passed]
+          if failed:
+              raise SystemExit("Release manifest checks failed: " + ", ".join(failed))
+          PY
       - name: Create draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create "${GITHUB_REF_NAME}"
-          release-assets/*
-          --verify-tag
-          --generate-notes
-          --draft
-          --title "Short Tracker ${GITHUB_REF_NAME}"
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          gh release create "${GITHUB_REF_NAME}" \
+            "release-assets/Short-Tracker-v${version}-windows-x64.zip" \
+            "release-assets/Short-Tracker-v${version}-windows-x64.zip.sha256" \
+            "release-assets/release-manifest-v${version}.json" \
+            --verify-tag \
+            --generate-notes \
+            --draft \
+            --title "Short Tracker ${GITHUB_REF_NAME}"

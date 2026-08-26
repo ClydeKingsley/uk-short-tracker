@@ -22,3 +22,10 @@ from `windows-runtime-lock.json`, any WebView2 DLL whose embedded version
 differs from `1.0.3856.49`, and any unreviewed .NET reference assembly. A
 dependency or runtime update therefore requires a fresh licence review. These
 files are third-party terms, not the Short Tracker project licence.
+
+The Windows package targets Windows 10/11 x64 and deliberately relies on the
+operating system's Universal CRT and API-set contracts. Host copies named
+`ucrtbase.dll` or `api-ms-win-*.dll` are excluded from PyInstaller output. Both
+the licence collector and final archive verifier reject them if a build host
+tries to add them, preventing runner-specific native binaries from bypassing
+the locked runtime review.

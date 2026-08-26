@@ -9,6 +9,7 @@ from tools.verify_release_archive import (
     REQUIRED_THIRD_PARTY_COMPONENTS,
     has_forbidden_path_part,
     has_forbidden_suffix,
+    is_unreviewed_windows_system_runtime,
     verify_third_party_licences,
 )
 
@@ -60,6 +61,23 @@ class ReleaseVerifierPathTests(unittest.TestCase):
         for value in ("python311.dll", "LICENSE.txt", "release-manifest.json"):
             with self.subTest(value=value):
                 self.assertFalse(has_forbidden_suffix(PurePosixPath(value)))
+
+    def test_rejects_host_specific_ucrt_and_api_set_binaries(self) -> None:
+        for value in (
+            "Short-Tracker/_internal/ucrtbase.dll",
+            "Short-Tracker/_internal/api-ms-win-core-file-l1-1-0.dll",
+            "Short-Tracker/_internal/api-ms-win-crt-runtime-l1-1-0.dll",
+        ):
+            with self.subTest(value=value):
+                self.assertTrue(
+                    is_unreviewed_windows_system_runtime(PurePosixPath(value))
+                )
+
+        self.assertFalse(
+            is_unreviewed_windows_system_runtime(
+                PurePosixPath("Short-Tracker/_internal/VCRUNTIME140.dll")
+            )
+        )
 
 
 class ThirdPartyLicenceVerifierTests(unittest.TestCase):

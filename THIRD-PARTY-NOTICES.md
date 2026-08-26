@@ -66,6 +66,12 @@ data directories; if a future PyInstaller analysis adds new native runtime
 files, the lock and this review must be updated rather than silently accepting
 them.
 
+Short Tracker targets Windows 10/11 x64 and uses the operating system's
+Universal CRT and API-set contracts. It deliberately excludes host copies of
+`ucrtbase.dll` and `api-ms-win-*.dll`; the licence collector and archive
+verifier both fail if a build runner tries to add them. This keeps native
+runtime contents consistent across local and GitHub-hosted builds.
+
 FCA files and Yahoo responses are runtime data sources, not redistributed
 release assets. Short Tracker may also query GitHub's public Releases API for
 version and asset metadata from the canonical `ClydeKingsley/uk-short-tracker`

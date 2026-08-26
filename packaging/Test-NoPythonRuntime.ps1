@@ -2,7 +2,8 @@
 
 [CmdletBinding()]
 param(
-    [string]$Archive = (Join-Path $PSScriptRoot '..\dist\Short-Tracker-v0.2.0-preview-windows-x64.zip')
+    [Parameter(Mandatory)]
+    [string]$Archive
 )
 
 Set-StrictMode -Version Latest

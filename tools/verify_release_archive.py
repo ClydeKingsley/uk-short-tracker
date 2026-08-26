@@ -89,6 +89,13 @@ REQUIRED_THIRD_PARTY_COMPONENTS = frozenset(
 )
 
 
+def is_unreviewed_windows_system_runtime(path: PurePosixPath) -> bool:
+    """Reject host-specific UCRT/API-set DLLs outside the locked inventory."""
+
+    name = path.name.casefold()
+    return name == "ucrtbase.dll" or name.startswith("api-ms-win-")
+
+
 def has_forbidden_suffix(path: PurePosixPath) -> bool:
     name = path.name.casefold()
     return (
@@ -264,6 +271,8 @@ def main() -> int:
                 failures.append(f"forbidden private/generated path: {name}")
             if has_forbidden_suffix(path):
                 failures.append(f"forbidden private/generated suffix: {name}")
+            if is_unreviewed_windows_system_runtime(path):
+                failures.append(f"unreviewed Windows system runtime binary: {name}")
             previous = folded.setdefault(name.casefold(), name)
             if previous != name:
                 failures.append(f"case-insensitive collision: {previous} / {name}")

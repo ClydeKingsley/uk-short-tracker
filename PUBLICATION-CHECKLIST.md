@@ -1,8 +1,9 @@
 # Public GitHub publication checklist
 
 Use this checklist when preparing a public Short Tracker release. Checked
-maintainer decisions record the standing policy selected for `v0.2.0`; the
-remaining operational items must be re-verified for each applicable release.
+maintainer decisions record the standing policy selected for the first stable
+release; the remaining operational items must be re-verified for each
+applicable release.
 
 ## Maintainer decisions
 
@@ -13,9 +14,10 @@ remaining operational items must be re-verified for each applicable release.
   both READMEs.
 - [x] Use `ClydeKingsley/uk-short-tracker` as the sole canonical public Release
   source and configure the metadata-only update checker to that exact repository.
-- [x] Publish `v0.2.0` as a stable release.
-- [x] Accept an unsigned `v0.2.0` and disclose the resulting Unknown publisher
-  and SmartScreen risk in the READMEs and Release notes.
+- [x] Preserve the rejected `v0.2.0` tag for provenance and publish its
+  corrected successor, `v0.2.1`, as the first downloadable stable release.
+- [x] Accept an unsigned first stable release and disclose the resulting
+  Unknown publisher and SmartScreen risk in the READMEs and Release notes.
 
 ## Local verification
 
@@ -92,6 +94,7 @@ remaining operational items must be re-verified for each applicable release.
 - [ ] Record any SmartScreen or antivirus warning honestly in the Release notes.
 - [ ] Publish only after the exact downloaded asset passes acceptance testing.
 
-Any `v0.2.0-preview` ZIP is an internal technical preview and must not be
-attached to the public Release. Only the stable, licensed artifact produced by
-the reviewed tag workflow is eligible for publication.
+Any `v0.2.0-preview` ZIP and the rejected `v0.2.0` CI artifact are internal
+technical evidence and must not be attached to a public Release. Only a stable,
+licensed artifact produced by a reviewed immutable tag workflow is eligible
+for publication.

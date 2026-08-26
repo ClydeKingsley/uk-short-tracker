@@ -24,6 +24,21 @@ hiddenimports += [
     "webview.platforms.winforms",
 ]
 
+
+def is_system_ucrt_binary(binary_entry):
+    """Keep supported Windows' own UCRT/API-set DLLs out of the bundle.
+
+    PyInstaller explicitly permits these system-library names and can resolve
+    physical host copies through PATH/System32 on some Windows runners, even
+    though the locked Python distribution does not contain them. Short Tracker
+    supports Windows 10/11, where they are operating-system components, so
+    bundling host-specific copies would weaken reproducibility and bypass the
+    reviewed native-runtime inventory.
+    """
+
+    name = Path(binary_entry[0]).name.casefold()
+    return name == "ucrtbase.dll" or name.startswith("api-ms-win-")
+
 a = Analysis(
     [str(repo_root / "packaging" / "windows_entry.py")],
     pathex=[str(repo_root)],
@@ -47,6 +62,7 @@ a = Analysis(
     noarchive=False,
     optimize=0,
 )
+a.binaries = [entry for entry in a.binaries if not is_system_ucrt_binary(entry)]
 pyz = PYZ(a.pure)
 
 exe = EXE(

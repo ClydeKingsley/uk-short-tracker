@@ -2,6 +2,21 @@
 
 All notable changes are documented here.
 
+## [0.2.1] - 2026-08-26
+
+### Fixed
+
+- Windows packages now exclude host-specific Universal CRT/API-set DLL copies
+  and fail verification if a build runner reintroduces them, keeping the
+  reviewed native-runtime inventory deterministic across build machines;
+- the tag workflow now checks out release metadata before creating a draft,
+  revalidates the exact three assets and their checksum/manifest, and retains
+  the attested workflow artifact for 30 days.
+
+This is the first downloadable stable public release. The earlier `v0.2.0` tag
+is retained for provenance, but its runner-specific build was rejected during
+independent post-build review and was never published as a GitHub Release.
+
 ## [0.2.0] - 2026-08-26
 
 ### Added
@@ -26,9 +41,9 @@ All notable changes are documented here.
 - frozen builds continue to keep user data under
   `%LOCALAPPDATA%\ShortTracker\data`, independently of the extracted program.
 
-This is the first stable public release under the MIT License. Its Windows
-executable is intentionally unsigned; users should review the published
-SHA-256 checksum and release notes before running it.
+This was the first stable public-release candidate under the MIT License. Its
+tagged CI build was not published after post-build review identified
+runner-specific native files outside the reviewed runtime inventory.
 
 ## [0.1.0] - 2026-08-24
 
