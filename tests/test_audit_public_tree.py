@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from contextlib import redirect_stderr, redirect_stdout
+import io
 from pathlib import Path
 import tempfile
 import unittest
 
-from tools.audit_public_tree import audit, has_forbidden_file_type
+from tools.audit_public_tree import audit, has_forbidden_file_type, main
 
 
 class PublicTreeAuditTests(unittest.TestCase):
@@ -53,6 +55,26 @@ class PublicTreeAuditTests(unittest.TestCase):
             (root / "README.md").write_text("Public documentation.\n", encoding="utf-8")
             (root / "module.py").write_text("VALUE = 42\n", encoding="utf-8")
             self.assertEqual(audit(root), [])
+
+    def test_cli_never_logs_finding_details_or_local_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            label = "cloudflare_api_" + "token"
+            value = "abcdefghijklmnopqrstuvwxyz012345"
+            (root / "safe.txt").write_text(
+                f'{label} = "{value}"\n',
+                encoding="utf-8",
+            )
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                result = main([str(root)])
+
+        self.assertEqual(result, 1)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("finding details were suppressed", stderr.getvalue())
+        self.assertNotIn(value, stderr.getvalue())
+        self.assertNotIn(str(root), stderr.getvalue())
 
 
 if __name__ == "__main__":

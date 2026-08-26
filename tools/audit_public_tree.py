@@ -227,11 +227,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     failures = audit(args.root)
     if failures:
-        print("Public-tree audit failed:", file=sys.stderr)
-        for failure in failures:
-            print(f"- {failure}", file=sys.stderr)
+        # A finding can be derived from a secret-bearing file, path, or read
+        # error.  Do not echo finding details into CI logs; callers that need
+        # local diagnostics can inspect audit()'s return value in-process.
+        print(
+            "Public-tree audit failed; finding details were suppressed to protect sensitive data.",
+            file=sys.stderr,
+        )
         return 1
-    print(f"Public-tree audit passed: {args.root.resolve()}")
+    print("Public-tree audit passed.")
     return 0
 
 
