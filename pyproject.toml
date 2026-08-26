@@ -42,7 +42,7 @@ Issues = "https://github.com/ClydeKingsley/uk-short-tracker/issues"
 
 [project.optional-dependencies]
 build = [
-  "Pillow==12.2.0",
+  "Pillow==12.3.0",
   "pyinstaller==6.22.2",
   "pywebview==6.2.1; sys_platform == 'win32'",
   "pythonnet==3.1.0; sys_platform == 'win32'",
