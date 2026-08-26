@@ -11,7 +11,9 @@ All notable changes are documented here.
   reviewed native-runtime inventory deterministic across build machines;
 - the tag workflow now checks out release metadata before creating a draft,
   revalidates the exact three assets and their checksum/manifest, and retains
-  the attested workflow artifact for 30 days.
+  the attested workflow artifact for 30 days;
+- the build-only Pillow dependency is updated to 12.3.0 to incorporate its
+  current security fixes before generating the bundled application icon.
 
 This is the first downloadable stable public release. The earlier `v0.2.0` tag
 is retained for provenance, but its runner-specific build was rejected during
