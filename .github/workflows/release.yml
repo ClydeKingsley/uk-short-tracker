@@ -112,8 +112,10 @@ jobs:
             exit 1
           fi
 
-          expected_hash="$(awk 'NR == 1 { print $1 }' "$checksum")"
-          expected_name="$(awk 'NR == 1 { print $2 }' "$checksum")"
+          # The Windows packager writes a CRLF checksum file. Strip CR before
+          # comparing fields on the Linux draft-release runner.
+          expected_hash="$(awk 'NR == 1 { print $1 }' "$checksum" | tr -d '\r')"
+          expected_name="$(awk 'NR == 1 { print $2 }' "$checksum" | tr -d '\r')"
           actual_hash="$(sha256sum "$zip" | awk '{ print $1 }')"
           if [[ "$expected_hash" != "$actual_hash" || "$expected_name" != "$(basename "$zip")" ]]; then
             echo 'Release checksum or filename does not match.' >&2

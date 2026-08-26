@@ -45,6 +45,12 @@ class DesktopPackagingContractTests(unittest.TestCase):
         self.assertIn('renderer == "edgechromium"', entry)
         self.assertIn("$bundleSelfTest.webview_renderer -ne 'edgechromium'", build_script)
 
+    def test_release_checksum_verification_normalizes_windows_crlf(self) -> None:
+        workflow = self.read(".github/workflows/release.yml")
+        self.assertEqual(workflow.count("| tr -d '\\r'"), 2)
+        self.assertIn('expected_hash="$(awk', workflow)
+        self.assertIn('expected_name="$(awk', workflow)
+
 
 if __name__ == "__main__":
     unittest.main()

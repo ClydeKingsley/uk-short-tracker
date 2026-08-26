@@ -2,6 +2,13 @@
 
 All notable changes are documented here.
 
+## [Unreleased]
+
+### Fixed
+
+- draft Release checksum verification now normalizes the Windows packager's
+  CRLF line ending before comparing fields on the Linux metadata runner.
+
 ## [0.2.1] - 2026-08-26
 
 ### Fixed
