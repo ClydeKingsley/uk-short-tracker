@@ -54,6 +54,10 @@ class PublicTreeAuditTests(unittest.TestCase):
             root = Path(temporary)
             (root / "README.md").write_text("Public documentation.\n", encoding="utf-8")
             (root / "module.py").write_text("VALUE = 42\n", encoding="utf-8")
+            (root / "application.exe.config").write_text(
+                "<configuration><runtime /></configuration>\n",
+                encoding="utf-8",
+            )
             self.assertEqual(audit(root), [])
 
     def test_cli_never_logs_finding_details_or_local_paths(self) -> None:

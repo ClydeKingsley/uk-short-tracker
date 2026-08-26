@@ -29,7 +29,12 @@ import tempfile
 from typing import Any, Iterator, Mapping, Sequence
 from urllib.parse import urlsplit
 
-from .fca import ANSP_REGIME_START, LEGACY_PUBLIC_THRESHOLD_BP
+from .fca import (
+    ANSP_FIRST_PUBLISHED_ON,
+    ANSP_INITIAL_POSITION_DATE,
+    LEGACY_PUBLIC_THRESHOLD_BP,
+    _ansp_chart_schedule,
+)
 
 
 PUBLIC_EXPORT_SCHEMA_VERSION = 1
@@ -428,38 +433,29 @@ def _legacy_series(
 def _ansp_series(
     conn: sqlite3.Connection, heads: Mapping[str, int], isin: str
 ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
-    historic_rows = conn.execute(
+    raw_historic_rows = conn.execute(
         """
         SELECT position_date, became_historical_date, aggregate_bp, row_number
           FROM ansp_historic
          WHERE snapshot_id = ? AND isin = ?
-         ORDER BY MAX(position_date, ?) ASC,
-                  became_historical_date ASC, row_number ASC
+         ORDER BY became_historical_date ASC, row_number ASC
         """,
-        (heads["ansp_historic"], isin, ANSP_REGIME_START),
+        (heads["ansp_historic"], isin),
     ).fetchall()
-    points: list[dict[str, Any]] = []
-    for row in historic_rows:
-        position_date = _validate_date(
-            row["position_date"], label=f"ANSP position date for {isin}"
-        )
-        became_historical_date = _validate_date(
-            row["became_historical_date"],
-            label=f"ANSP historical date for {isin}",
-        )
-        aggregate_bp = int(row["aggregate_bp"])
-        points.append(
-            {
-                "date": max(position_date, ANSP_REGIME_START),
-                "position_date": position_date,
-                "became_historical_date": became_historical_date,
-                "value_bp": aggregate_bp,
-                "value_percent": _percent_from_bp(aggregate_bp),
-                "is_current": False,
-                "transition_date_clamped": position_date < ANSP_REGIME_START,
-                "regime": "anonymous_fca_ansp",
-            }
-        )
+    historic_rows = [
+        {
+            "position_date": _validate_date(
+                row["position_date"], label=f"ANSP position date for {isin}"
+            ),
+            "became_historical_date": _validate_date(
+                row["became_historical_date"],
+                label=f"ANSP historical date for {isin}",
+            ),
+            "aggregate_bp": int(row["aggregate_bp"]),
+            "row_number": int(row["row_number"]),
+        }
+        for row in raw_historic_rows
+    ]
 
     current_rows = conn.execute(
         """
@@ -473,19 +469,68 @@ def _ansp_series(
     if len(current_rows) > 1:
         raise PublicExportError(f"current ANSP contains duplicate ISIN rows: {isin}")
     current: dict[str, Any] | None = None
+    current_row: dict[str, Any] | None = None
     if current_rows:
         row = current_rows[0]
-        position_date = _validate_date(
-            row["position_date"], label=f"current ANSP position date for {isin}"
+        current_row = {
+            "position_date": _validate_date(
+                row["position_date"], label=f"current ANSP position date for {isin}"
+            ),
+            "aggregate_bp": int(row["aggregate_bp"]),
+            "row_number": int(row["row_number"]),
+        }
+
+    rsl_row = conn.execute(
+        """
+        SELECT MIN(date_added) AS date_added
+          FROM rsl_entries
+         WHERE snapshot_id = ? AND isin = ? AND date_added IS NOT NULL
+        """,
+        (heads["reportable_shares"], isin),
+    ).fetchone()
+    rsl_date_added = _validate_date(
+        rsl_row["date_added"] if rsl_row is not None else None,
+        label=f"RSL date added for {isin}",
+        allow_none=True,
+    )
+
+    try:
+        historic_schedule, current_schedule = _ansp_chart_schedule(
+            historic_rows,
+            current_position_date=(
+                str(current_row["position_date"])
+                if current_row is not None
+                else None
+            ),
+            rsl_date_added=rsl_date_added,
         )
+    except ValueError as exc:
+        raise PublicExportError(f"invalid ANSP interval chain for {isin}: {exc}") from exc
+
+    points: list[dict[str, Any]] = []
+    for row, chart in zip(historic_rows, historic_schedule, strict=True):
         aggregate_bp = int(row["aggregate_bp"])
+        points.append(
+            {
+                **chart,
+                "position_date": row["position_date"],
+                "became_historical_date": row["became_historical_date"],
+                "value_bp": aggregate_bp,
+                "value_percent": _percent_from_bp(aggregate_bp),
+                "is_current": False,
+                "regime": "anonymous_fca_ansp",
+            }
+        )
+
+    if current_row is not None and current_schedule is not None:
+        aggregate_bp = int(current_row["aggregate_bp"])
         current = {
-            "date": max(position_date, ANSP_REGIME_START),
-            "position_date": position_date,
+            **current_schedule,
+            "position_date": current_row["position_date"],
+            "became_historical_date": None,
             "value_bp": aggregate_bp,
             "value_percent": _percent_from_bp(aggregate_bp),
             "is_current": True,
-            "transition_date_clamped": position_date < ANSP_REGIME_START,
             "regime": "anonymous_fca_ansp",
         }
         points.append(dict(current))
@@ -528,13 +573,20 @@ def _series_payload(
                 "a later below-threshold or closure row removes that holder."
             ),
             "ansp": (
-                "Official FCA anonymous aggregate for this exact ISIN. The "
-                "legacy reconstruction and ANSP series remain separate."
+                "Official FCA anonymous aggregate for this exact ISIN, shown "
+                "as step-after state intervals. The initial cohort is in scope "
+                f"from {ANSP_INITIAL_POSITION_DATE}; later states start when "
+                "the previous value became historical. First publication on "
+                f"{ANSP_FIRST_PUBLISHED_ON} is separate from the event axis. "
+                "The legacy reconstruction and ANSP series remain separate."
             ),
             "caveats": [
                 "Neither series is total market short interest.",
                 "Sub-threshold, exempt, and otherwise undisclosed positions are absent.",
                 "FCA may revise history after late, corrected, or verified notifications.",
+                "ANSP position_date is constituent metadata and may move backwards; it is not each later state's chart date.",
+                "If no current ANSP row exists, the last historic interval ends at became_historical_date and remains a gap; it is never filled with zero.",
+                "Legacy and ANSP must not be connected even when both refer to 9 July 2026.",
             ],
         },
     }

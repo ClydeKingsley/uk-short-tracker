@@ -34,6 +34,10 @@ This build does not require Python. It is currently unsigned, so Windows may
 show "Unknown publisher" or a SmartScreen warning. Verify the published
 SHA-256. A checksum verifies bytes but is not a code signature.
 
+Since v0.2.2, the bundled .NET configuration also handles the Internet-zone
+marker that Windows can propagate from a downloaded ZIP to extracted DLLs. You
+do not need to install Python or manually unblock individual program files.
+
 Complete third-party licence texts and their hash-bound inventory are under
 LICENSES. The overview is THIRD-PARTY-NOTICES.txt.
 
@@ -62,6 +66,9 @@ LICENSES. The overview is THIRD-PARTY-NOTICES.txt.
 本版本不需要安装 Python。目前 EXE 没有代码签名，Windows 可能显示
 “未知发布者”或 SmartScreen 提示。请核对发布页提供的 SHA-256；校验和只能
 验证文件字节，不能替代代码签名。
+
+从 v0.2.2 开始，随包提供的 .NET 配置也能处理 Windows 从下载 ZIP 传递给解压
+DLL 的 Internet 区域标记；无需安装 Python，也无需逐个手工解除程序文件锁定。
 
 完整第三方许可证正文及逐文件哈希清单位于 LICENSES，概览见
 THIRD-PARTY-NOTICES.txt。

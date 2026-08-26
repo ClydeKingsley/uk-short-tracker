@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import unittest
+import xml.etree.ElementTree as ET
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -41,9 +42,27 @@ class DesktopPackagingContractTests(unittest.TestCase):
     def test_bundle_self_test_requires_edgechromium_renderer(self) -> None:
         entry = self.read("packaging/windows_entry.py")
         build_script = self.read("packaging/Build-WindowsRelease.ps1")
+        no_python_test = self.read("packaging/Test-NoPythonRuntime.ps1")
+        self.assertIn("_configure_pythonnet_runtime()", entry)
         self.assertIn('initialize("edgechromium")', entry)
         self.assertIn('renderer == "edgechromium"', entry)
         self.assertIn("$bundleSelfTest.webview_renderer -ne 'edgechromium'", build_script)
+        self.assertIn("-Stream Zone.Identifier", build_script)
+        self.assertIn("-Stream Zone.Identifier", no_python_test)
+
+    def test_pythonnet_config_allows_downloaded_managed_assemblies(self) -> None:
+        config_path = PROJECT_ROOT / "launcher" / "pythonnet-netfx.config"
+        root = ET.parse(config_path).getroot()
+        remote_sources = root.find("./runtime/loadFromRemoteSources")
+        self.assertIsNotNone(remote_sources)
+        self.assertEqual(remote_sources.attrib.get("enabled"), "true")
+        launcher = self.read("launcher/desktop_launcher.py")
+        spec = self.read("packaging/ShortTracker.spec")
+        self.assertIn('domain=PYTHONNET_APPDOMAIN', launcher)
+        self.assertIn('config_file=PYTHONNET_CONFIG_PATH', launcher)
+        self.assertIn('"pythonnet-netfx.config"', spec)
+        build_script = self.read("packaging/Build-WindowsRelease.ps1")
+        self.assertIn("'Short Tracker.exe.config'", build_script)
 
     def test_release_checksum_verification_normalizes_windows_crlf(self) -> None:
         workflow = self.read(".github/workflows/release.yml")

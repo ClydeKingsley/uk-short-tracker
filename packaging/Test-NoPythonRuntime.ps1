@@ -77,6 +77,28 @@ try {
     $releaseManifest = Get-Content -LiteralPath (Join-Path $packageRoot 'release-manifest.json') -Raw | ConvertFrom-Json
     $expectedVersion = [string]$releaseManifest.version
 
+    $motwRuntimeDll = Join-Path $packageRoot '_internal\pythonnet\runtime\Python.Runtime.dll'
+    if (-not (Test-Path -LiteralPath $motwRuntimeDll -PathType Leaf)) {
+        throw 'Bundled Python.Runtime.dll is missing.'
+    }
+    Set-Content `
+        -LiteralPath $motwRuntimeDll `
+        -Stream Zone.Identifier `
+        -Value "[ZoneTransfer]`r`nZoneId=3`r`nHostUrl=https://github.com/" `
+        -Encoding ascii
+    $bundleSelfTest = Join-Path $testRoot 'downloaded-zip-self-test.json'
+    $selfTestExit = Invoke-Frozen `
+        -FilePath $startExe `
+        -Arguments @('--bundle-self-test', '--result-json', $bundleSelfTest) `
+        -LocalAppData $localAppData
+    if ($selfTestExit -ne 0 -or -not (Test-Path -LiteralPath $bundleSelfTest -PathType Leaf)) {
+        throw "Downloaded-ZIP desktop dependency self-test failed with exit code $selfTestExit."
+    }
+    $selfTestResult = Get-Content -LiteralPath $bundleSelfTest -Raw | ConvertFrom-Json
+    if (-not $selfTestResult.ok -or $selfTestResult.webview_renderer -ne 'edgechromium') {
+        throw "Downloaded-ZIP desktop dependency self-test failed: $($selfTestResult | ConvertTo-Json -Compress)"
+    }
+
     $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
     $listener.Start()
     try {
@@ -135,6 +157,7 @@ try {
 
     [pscustomobject]@{
         NoPythonOnPath = 'passed'
+        DownloadedZipManagedRuntime = 'passed'
         DefaultLocalAppData = 'passed'
         CrossInstallStop = 'passed'
         HealthVersion = $health.version

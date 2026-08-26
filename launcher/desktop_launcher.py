@@ -46,6 +46,8 @@ WEBVIEW2_MINIMUM_VERSION = (86, 0, 622, 0)
 WEBVIEW2_RUNTIME_PRODUCT_ID = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 DOTNET_FRAMEWORK_462_RELEASE = 394802
 WEBVIEW2_DOWNLOAD_URL = "https://developer.microsoft.com/microsoft-edge/webview2/"
+PYTHONNET_APPDOMAIN = "ShortTrackerDesktop"
+PYTHONNET_CONFIG_PATH = PROJECT_ROOT / "launcher" / "pythonnet-netfx.config"
 
 
 class LauncherError(RuntimeError):
@@ -419,6 +421,42 @@ def _require_windows_webview2() -> str:
             f"Runtime and try again.\n\n{WEBVIEW2_DOWNLOAD_URL}"
         )
     return version
+
+
+def _configure_pythonnet_runtime() -> None:
+    """Configure pythonnet before pywebview imports ``clr``.
+
+    A ZIP downloaded from GitHub can retain Windows' Internet-zone marker when
+    Explorer extracts it. .NET Framework then refuses to load the bundled
+    ``Python.Runtime.dll`` and clr-loader surfaces the misleading
+    ``Failed to resolve Python.Runtime.Loader.Initialize`` error. A dedicated
+    AppDomain with our reviewed runtime configuration permits those local,
+    application-owned managed assemblies without changing or unblocking files
+    in the extracted program directory.
+    """
+
+    if os.name != "nt":
+        return
+    if not PYTHONNET_CONFIG_PATH.is_file():
+        raise LauncherError(
+            "Short Tracker 的 .NET 运行配置缺失。请重新下载并完整解压发布包。\n"
+            "Short Tracker's .NET runtime configuration is missing. Download "
+            "and fully extract the release again."
+        )
+    try:
+        import pythonnet
+
+        if pythonnet.get_runtime_info() is None:
+            pythonnet.set_runtime(
+                "netfx",
+                domain=PYTHONNET_APPDOMAIN,
+                config_file=PYTHONNET_CONFIG_PATH,
+            )
+    except Exception as exc:
+        raise LauncherError(
+            "Short Tracker 无法配置 .NET 桌面运行环境。\n"
+            "Short Tracker could not configure its .NET desktop runtime."
+        ) from exc
 
 
 def _console_python(path: str | Path) -> str:
@@ -1457,7 +1495,10 @@ def run_desktop(
                 _require_windows_webview2()
             if webview_module is None:
                 try:
+                    _configure_pythonnet_runtime()
                     import webview as webview_module
+                except LauncherError:
+                    raise
                 except ImportError as exc:
                     raise LauncherError(
                         "Short Tracker 桌面组件未正确安装。\n"

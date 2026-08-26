@@ -3,7 +3,8 @@
 This module keeps the two disclosure regimes deliberately separate:
 
 * the archived, named public disclosures under the pre-13 July 2026 regime;
-* the FCA's anonymous aggregate net short positions (ANSP) from 13 July 2026.
+* the FCA's anonymous aggregate net short positions (ANSP), first published on
+  13 July 2026 for positions in scope from midnight on 9 July 2026.
 
 The legacy issuer aggregate is reconstructed by replaying the exact disclosed
 state of each ``(position holder, ISIN)``.  A published value of 0.50% or more
@@ -35,9 +36,116 @@ from .db import Database
 
 
 LEGACY_PUBLIC_THRESHOLD_BP = 50  # 0.50%, with one bp = 0.01 percentage point.
+# The first ANSP publication on 13 July represented positions at midnight on
+# 9 July. Keep the publication marker separate from the first position scope:
+# the chart uses event/effective dates, while the UI's methodology marker stays
+# on the day the new public output first appeared.
+ANSP_INITIAL_POSITION_DATE = "2026-07-09"
 ANSP_REGIME_START = "2026-07-13"
+ANSP_FIRST_PUBLISHED_ON = ANSP_REGIME_START
 IMPORTER_VERSION = 1
 MAX_CURRENT_RANKING_LIMIT = 2_000
+
+
+def _ansp_scope_start(rsl_date_added: str | None) -> str:
+    """Return the first date on which an ISIN can be in ANSP chart scope.
+
+    FCA's initial RSL was published/dated 13 July, but its first ANSP values
+    represented positions at midnight on 9 July. Treat that initial cohort as
+    in scope on 9 July. Shares added after the first publication enter scope on
+    their actual RSL ``date_added``.
+    """
+
+    if not rsl_date_added or rsl_date_added <= ANSP_FIRST_PUBLISHED_ON:
+        return ANSP_INITIAL_POSITION_DATE
+    return max(ANSP_INITIAL_POSITION_DATE, rsl_date_added)
+
+
+def _ansp_chart_schedule(
+    historic_rows: Iterable[Mapping[str, Any]],
+    *,
+    current_position_date: str | None,
+    rsl_date_added: str | None,
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    """Link FCA ANSP states into step-after chart intervals.
+
+    ``position_date`` is the latest constituent notification date and can move
+    backwards after late or corrected notifications. It therefore determines
+    only the initial state's lower bound. Historic states are ordered by the
+    date each became historical; every later state begins exactly when the
+    previous state ended. A current state begins at the last historic end, or
+    at the initial scope/position bound when no history exists.
+    """
+
+    def source_row_number(row: Mapping[str, Any]) -> int:
+        try:
+            value = row["row_number"]
+        except (KeyError, IndexError):
+            return 0
+        return int(value or 0)
+
+    ordered = sorted(
+        list(historic_rows),
+        key=lambda row: (
+            str(row["became_historical_date"]),
+            source_row_number(row),
+        ),
+    )
+    if not ordered and current_position_date is None:
+        return [], None
+
+    first_position_date = str(
+        ordered[0]["position_date"] if ordered else current_position_date
+    )
+    scope_start = _ansp_scope_start(rsl_date_added)
+    initial_chart_date = max(scope_start, first_position_date)
+    historic_schedule: list[dict[str, Any]] = []
+    previous_end: str | None = None
+    for index, row in enumerate(ordered):
+        position_date = str(row["position_date"])
+        became_historical_date = str(row["became_historical_date"])
+        chart_date = initial_chart_date if index == 0 else str(previous_end)
+        if became_historical_date < chart_date:
+            raise ValueError(
+                "ANSP historical interval ends before it starts: "
+                f"{chart_date} > {became_historical_date}"
+            )
+        historic_schedule.append(
+            {
+                "date": chart_date,
+                "chart_date_basis": (
+                    "initial_ansp_scope_and_constituent_position_date"
+                    if index == 0
+                    else "previous_became_historical_date"
+                ),
+                "chart_interpolation": "step_after",
+                "ansp_scope_start": scope_start,
+                "first_published_on": ANSP_FIRST_PUBLISHED_ON,
+                "interval_end": became_historical_date,
+                # Backwards-compatible diagnostic; chart_date_basis is the
+                # authoritative explanation when date differs from position_date.
+                "transition_date_clamped": chart_date != position_date,
+            }
+        )
+        previous_end = became_historical_date
+
+    current_schedule: dict[str, Any] | None = None
+    if current_position_date is not None:
+        chart_date = str(previous_end) if previous_end is not None else initial_chart_date
+        current_schedule = {
+            "date": chart_date,
+            "chart_date_basis": (
+                "previous_became_historical_date"
+                if previous_end is not None
+                else "initial_ansp_scope_and_constituent_position_date"
+            ),
+            "chart_interpolation": "step_after",
+            "ansp_scope_start": scope_start,
+            "first_published_on": ANSP_FIRST_PUBLISHED_ON,
+            "interval_end": None,
+            "transition_date_clamped": chart_date != current_position_date,
+        }
+    return historic_schedule, current_schedule
 
 
 @dataclass(frozen=True)
@@ -1200,9 +1308,10 @@ class FCADataService:
         """Return separate legacy-derived and official ANSP histories.
 
         All ``value`` fields are percentage points of issued share capital, not
-        fractions.  The ANSP list preserves both FCA date fields.  ``date`` is
-        clamped to 13 July 2026 for carried-in transition positions so charts do
-        not imply that anonymous aggregate data existed before the regime did.
+        fractions. The ANSP list preserves both FCA date fields, but uses the
+        effective state interval for ``date``: first scope/constituent date,
+        then the previous state's ``became_historical_date``. Publication on
+        13 July remains separate metadata and the methodology marker.
         """
 
         security = self.get_security(identifier)
@@ -1240,35 +1349,25 @@ class FCADataService:
                         }
                     )
 
+            historic_rows: list[dict[str, Any]] = []
             historic_snapshot = heads.get("ansp_historic")
             if historic_snapshot is not None:
-                for row in conn.execute(
-                    """
-                    SELECT position_date, became_historical_date, aggregate_bp, isin, row_number
-                      FROM ansp_historic
-                     WHERE snapshot_id = ? AND issuer_id = ?
-                     ORDER BY MAX(position_date, ?) ASC,
-                              became_historical_date ASC, row_number ASC
-                    """,
-                    (historic_snapshot, issuer_id, ANSP_REGIME_START),
-                ):
-                    display_date = max(row["position_date"], ANSP_REGIME_START)
-                    ansp.append(
-                        {
-                            "date": display_date,
-                            "position_date": row["position_date"],
-                            "became_historical_date": row["became_historical_date"],
-                            "value": _bp_to_pct(int(row["aggregate_bp"])),
-                            "unit": "percent_of_issued_share_capital",
-                            "isin": row["isin"],
-                            "is_current": False,
-                            "transition_date_clamped": row["position_date"] < ANSP_REGIME_START,
-                            "regime": "anonymous_fca_ansp",
-                        }
+                historic_rows = [
+                    dict(row)
+                    for row in conn.execute(
+                        """
+                        SELECT position_date, became_historical_date,
+                               aggregate_bp, isin, row_number
+                          FROM ansp_historic
+                         WHERE snapshot_id = ? AND issuer_id = ?
+                         ORDER BY isin ASC, became_historical_date ASC, row_number ASC
+                        """,
+                        (historic_snapshot, issuer_id),
                     )
+                ]
 
             current_snapshot = heads.get("ansp_current")
-            current: dict[str, Any] | None = None
+            current_row: dict[str, Any] | None = None
             if current_snapshot is not None:
                 row = conn.execute(
                     """
@@ -1280,18 +1379,70 @@ class FCADataService:
                     """,
                     (current_snapshot, issuer_id),
                 ).fetchone()
-                if row:
+                current_row = dict(row) if row is not None else None
+
+            rsl_dates: dict[str, str] = {}
+            for share in security.get("reportable_shares", []):
+                isin = str(share.get("isin") or "")
+                date_added = share.get("date_added")
+                if not isin or not date_added:
+                    continue
+                value = str(date_added)
+                rsl_dates[isin] = min(rsl_dates.get(isin, value), value)
+
+            historic_by_isin: dict[str, list[dict[str, Any]]] = {}
+            for row in historic_rows:
+                historic_by_isin.setdefault(str(row["isin"]), []).append(row)
+            series_isins = set(historic_by_isin)
+            if current_row is not None:
+                series_isins.add(str(current_row["isin"]))
+
+            current: dict[str, Any] | None = None
+            for isin in sorted(series_isins):
+                rows = historic_by_isin.get(isin, [])
+                this_current = current_row if current_row and current_row["isin"] == isin else None
+                historic_schedule, current_schedule = _ansp_chart_schedule(
+                    rows,
+                    current_position_date=(
+                        str(this_current["position_date"])
+                        if this_current is not None
+                        else None
+                    ),
+                    rsl_date_added=rsl_dates.get(isin),
+                )
+                for row, chart in zip(rows, historic_schedule, strict=True):
+                    ansp.append(
+                        {
+                            **chart,
+                            "position_date": row["position_date"],
+                            "became_historical_date": row["became_historical_date"],
+                            "value": _bp_to_pct(int(row["aggregate_bp"])),
+                            "unit": "percent_of_issued_share_capital",
+                            "isin": isin,
+                            "is_current": False,
+                            "regime": "anonymous_fca_ansp",
+                        }
+                    )
+                if this_current is not None and current_schedule is not None:
                     current = {
-                        "date": max(row["position_date"], ANSP_REGIME_START),
-                        "position_date": row["position_date"],
-                        "value": _bp_to_pct(int(row["aggregate_bp"])),
+                        **current_schedule,
+                        "position_date": this_current["position_date"],
+                        "became_historical_date": None,
+                        "value": _bp_to_pct(int(this_current["aggregate_bp"])),
                         "unit": "percent_of_issued_share_capital",
-                        "isin": row["isin"],
+                        "isin": isin,
                         "is_current": True,
-                        "transition_date_clamped": row["position_date"] < ANSP_REGIME_START,
                         "regime": "anonymous_fca_ansp",
                     }
                     ansp.append(dict(current))
+
+            ansp.sort(
+                key=lambda point: (
+                    point["date"],
+                    point["isin"],
+                    bool(point["is_current"]),
+                )
+            )
 
             for dataset_key in (
                 "legacy_named",
@@ -1316,9 +1467,11 @@ class FCADataService:
                     "use the later row in the FCA source workbook."
                 ),
                 "ansp": (
-                    "Official FCA anonymous issuer aggregate. It is kept separate from "
-                    "the legacy reconstruction and includes only positions reportable "
-                    "to the FCA, normally individual positions at or above 0.20%."
+                    "Official FCA anonymous issuer aggregate shown as step-after state "
+                    "intervals. The first state begins from the 9 July 2026 position "
+                    "scope (or a later RSL/constituent date); later states begin when "
+                    "the previous value became historical. Publication first occurred "
+                    "on 13 July and remains a separate methodology marker."
                 ),
                 "identity": (
                     "Exact ISIN first; exact normalised issuer-name alias only as a fallback. "
@@ -1327,7 +1480,9 @@ class FCADataService:
                 "caveats": [
                     "Neither series is total market short interest; sub-threshold and exempt positions are absent.",
                     "FCA may revise ANSP history after late, corrected, or verified notifications.",
-                    "ANSP position_date is the latest constituent notification date; carried-in dates may predate the public ANSP regime.",
+                    "ANSP position_date is constituent metadata and may move backwards; it is not each later state's chart date.",
+                    "If no current ANSP row exists, the last historic interval ends at became_historical_date and the chart remains a gap; it is never filled with zero.",
+                    "Legacy and ANSP are different measurements and must not be connected even when both refer to 9 July 2026.",
                 ],
             },
         }

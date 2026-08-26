@@ -303,6 +303,12 @@ try {
     Copy-Item -LiteralPath (Join-Path $repoRoot 'packaging\README-Windows.txt') -Destination (Join-Path $packageRoot 'README.txt')
     Copy-Item -LiteralPath (Join-Path $repoRoot 'PRIVACY.md') -Destination (Join-Path $packageRoot 'PRIVACY.txt')
     Copy-Item -LiteralPath (Join-Path $repoRoot 'THIRD-PARTY-NOTICES.md') -Destination (Join-Path $packageRoot 'THIRD-PARTY-NOTICES.txt')
+    # .NET reads process-wide startup policy only from the executable's sibling
+    # config. Keep the same reviewed file inside _internal for the dedicated
+    # pythonnet AppDomain and beside the EXE for CLR startup itself.
+    Copy-Item `
+        -LiteralPath (Join-Path $repoRoot 'launcher\pythonnet-netfx.config') `
+        -Destination (Join-Path $packageRoot 'Short Tracker.exe.config')
     $pyzTocPath = Join-Path $pyiWork 'ShortTracker\PYZ-00.toc'
     & $pythonExe -m tools.collect_third_party_licenses `
         --repo $repoRoot `
@@ -364,6 +370,23 @@ try {
         $smokePackage = Join-Path $smokeExtract $packageName
         $smokeStartExe = Join-Path $smokePackage 'Short Tracker.exe'
         $beforeFingerprint = Get-DirectoryFingerprint -Root $smokePackage
+        # Reproduce Explorer's treatment of an Internet-downloaded ZIP. The
+        # resulting alternate data stream used to make .NET Framework reject
+        # Python.Runtime.dll on a clean PC, even though the same bundle passed
+        # on its build runner.
+        $motwRuntimeDll = Join-Path $smokePackage '_internal\pythonnet\runtime\Python.Runtime.dll'
+        if (-not (Test-Path -LiteralPath $motwRuntimeDll -PathType Leaf)) {
+            throw 'Bundled Python.Runtime.dll is missing before Mark-of-the-Web smoke.'
+        }
+        Set-Content `
+            -LiteralPath $motwRuntimeDll `
+            -Stream Zone.Identifier `
+            -Value "[ZoneTransfer]`r`nZoneId=3`r`nHostUrl=https://github.com/" `
+            -Encoding ascii
+        $zoneMarker = Get-Content -LiteralPath $motwRuntimeDll -Stream Zone.Identifier -Raw
+        if ($zoneMarker -notmatch 'ZoneId=3') {
+            throw 'Could not apply the Mark-of-the-Web regression fixture.'
+        }
         $smokePort = Get-FreePort
         $cliStdout = Join-Path $smokeRoot 'launcher-cli.out.log'
         $cliStderr = Join-Path $smokeRoot 'launcher-cli.err.log'
@@ -372,7 +395,13 @@ try {
             -FilePath $smokeStartExe `
             -Arguments @('--bundle-self-test', '--result-json', $bundleSelfTestPath)
         if ($bundleSelfTestExit -ne 0 -or -not (Test-Path -LiteralPath $bundleSelfTestPath)) {
-            throw "Bundled openpyxl/SQLite/SSL/WebView2 self-test failed with exit code $bundleSelfTestExit."
+            $bundleSelfTestDetail = if (Test-Path -LiteralPath $bundleSelfTestPath) {
+                Get-Content -LiteralPath $bundleSelfTestPath -Raw
+            }
+            else {
+                'No self-test result was written.'
+            }
+            throw "Bundled openpyxl/SQLite/SSL/WebView2 self-test failed with exit code $bundleSelfTestExit. $bundleSelfTestDetail"
         }
         $bundleSelfTest = Get-Content -LiteralPath $bundleSelfTestPath -Raw | ConvertFrom-Json
         if (-not $bundleSelfTest.ok -or $bundleSelfTest.webview_renderer -ne 'edgechromium') {
@@ -467,7 +496,7 @@ try {
     Write-Output "Channel: $channel"
     Write-Output 'Bundled personal/local data: no'
     Write-Output 'Third-party licence inventory and hashes: passed'
-    Write-Output 'Bundled openpyxl/SQLite/SSL/WebView2 self-test: passed'
+    Write-Output 'Downloaded-ZIP pythonnet/WebView2 self-test: passed'
     Write-Output 'Extracted start/duplicate/assets/stop smoke: passed'
     if (-not $hasLicense) {
         Write-Warning 'This is an internal preview without a project licence. Do not publish or redistribute it.'

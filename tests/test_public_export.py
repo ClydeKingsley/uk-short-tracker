@@ -10,7 +10,12 @@ import unittest
 from short_tracker.db import Database
 from short_tracker.fca import FCADataService, FCA_SOURCES
 from short_tracker.public_export import PublicExportError, export_public_data
-from tests.test_fca_data import FixtureOpener, fixture_payloads, xlsx_bytes
+from tests.test_fca_data import (
+    FixtureOpener,
+    add_4imprint_timeline_fixture,
+    fixture_payloads,
+    xlsx_bytes,
+)
 
 
 class PublicExportTests(unittest.TestCase):
@@ -149,6 +154,64 @@ class PublicExportTests(unittest.TestCase):
         self.assertEqual(first["current"]["value_percent"], 0.9)
         self.assertEqual(second["current"]["value_percent"], 1.1)
         self.assertNotEqual(first["security"]["isin"], second["security"]["isin"])
+
+    def test_export_preserves_4imprint_effective_timeline_and_raw_fca_dates(self):
+        add_4imprint_timeline_fixture(self.payloads)
+        self._sync()
+        output = self.root / "public"
+
+        export_public_data(self.database_path, output)
+
+        payload = json.loads(
+            (output / "securities/GB0006640972/short-series.json").read_text("utf-8")
+        )
+        self.assertEqual(
+            ["2026-07-09", "2026-07-14", "2026-08-03", "2026-08-05"],
+            [row["date"] for row in payload["ansp"]],
+        )
+        self.assertEqual(
+            ["2026-06-29", "2026-07-14", "2026-08-03", "2026-05-01"],
+            [row["position_date"] for row in payload["ansp"]],
+        )
+        self.assertEqual(
+            ["2026-07-14", "2026-08-03", "2026-08-05", None],
+            [row["became_historical_date"] for row in payload["ansp"]],
+        )
+        self.assertEqual(
+            [1.05, 0.85, 0.56, 0.27],
+            [row["value_percent"] for row in payload["ansp"]],
+        )
+        self.assertEqual(
+            "initial_ansp_scope_and_constituent_position_date",
+            payload["ansp"][0]["chart_date_basis"],
+        )
+        self.assertTrue(
+            all(row["chart_interpolation"] == "step_after" for row in payload["ansp"])
+        )
+        self.assertTrue(
+            all(row["first_published_on"] == "2026-07-13" for row in payload["ansp"])
+        )
+        self.assertEqual("2026-08-05", payload["current"]["date"])
+        self.assertEqual("2026-05-01", payload["current"]["position_date"])
+
+    def test_export_missing_current_preserves_historic_end_and_gap(self):
+        add_4imprint_timeline_fixture(self.payloads, include_current=False)
+        self._sync()
+        output = self.root / "public"
+
+        export_public_data(self.database_path, output)
+
+        payload = json.loads(
+            (output / "securities/GB0006640972/short-series.json").read_text("utf-8")
+        )
+        self.assertIsNone(payload["current"])
+        self.assertEqual(
+            [1.05, 0.85, 0.56],
+            [row["value_percent"] for row in payload["ansp"]],
+        )
+        self.assertFalse(any(row["is_current"] for row in payload["ansp"]))
+        self.assertFalse(any(row["value_bp"] == 0 for row in payload["ansp"]))
+        self.assertEqual("2026-08-05", payload["ansp"][-1]["interval_end"])
 
     def test_failed_validation_preserves_previous_complete_export(self):
         self._sync()

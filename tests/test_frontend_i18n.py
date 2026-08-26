@@ -81,6 +81,112 @@ class FrontendInternationalisationTests(unittest.TestCase):
         self.assertIn('url.protocol !== "https:" || url.hostname !== "github.com"', self.app)
         self.assertIn('STATUS_POLL_INTERVAL = 30_000', self.app)
 
+    def test_ansp_interval_metadata_survives_frontend_normalization(self):
+        self.assertIn('const rawItems = forced.length ? [...direct, ...forced] : direct;', self.app)
+        self.assertIn('"interval_end"', self.app)
+        self.assertIn('"is_current"', self.app)
+        self.assertIn('existing.anspIntervalEnd = intervalEnd;', self.app)
+        self.assertIn('existing.anspIsCurrent = isCurrent;', self.app)
+        self.assertRegex(
+            self.app,
+            r'if \(isCurrent === true\) \{\s*existing\.anspIntervalEnd = null;',
+        )
+
+    def test_ansp_effective_axis_is_not_clamped_to_publication_marker(self):
+        self.assertIn(
+            'this.drawStepSeries("ansp", this.colors.ansp, shortBounds, upper);',
+            self.app,
+        )
+        self.assertNotIn(
+            'Math.max(this.viewStart, REGIME_SWITCH)',
+            self.app,
+        )
+        self.assertIn(
+            'const ansp = valueAtOrBefore(this.shortSeries, time, "ansp");',
+            self.app,
+        )
+        self.assertIn('const x = this.xForTime(REGIME_SWITCH);', self.app)
+
+    def test_ansp_historic_interval_ends_in_a_gap_while_current_is_open(self):
+        self.assertIn('function buildShortIntervals(items, field, effectiveEnd', self.app)
+        self.assertIn('if (isCurrent === true) intervalEnd = Infinity;', self.app)
+        self.assertIn(
+            'else if (Number.isFinite(point.anspIntervalEnd)) intervalEnd = Math.min(point.anspIntervalEnd, nextTime);',
+            self.app,
+        )
+        self.assertIn(
+            'else if (!Number.isFinite(nextTime) && isCurrent === false) intervalEnd = point.time;',
+            self.app,
+        )
+        self.assertIn(
+            'if (interval.time <= target && target < interval.intervalEnd) return interval;',
+            self.app,
+        )
+        self.assertIn(
+            'interval.intervalEnd > this.viewStart && interval.time <= this.viewEnd',
+            self.app,
+        )
+        self.assertIn(
+            '.filter((interval) => interval.visibleEnd > interval.visibleStart);',
+            self.app,
+        )
+
+    def test_active_ansp_tooltip_exposes_compact_bilingual_audit_metadata(self):
+        for element_id in (
+            "tooltipAnspAudit",
+            "tooltipAnspEffective",
+            "tooltipAnspPositionDate",
+            "tooltipAnspIntervalEnd",
+            "tooltipAnspDateBasis",
+            "tooltipAnspFirstPublished",
+        ):
+            with self.subTest(element_id=element_id):
+                self.assertIn(f'id="{element_id}"', self.html)
+                self.assertIn(f'"{element_id}"', self.app)
+        for key in (
+            "chart.auditTitle",
+            "chart.auditEffectiveFrom",
+            "chart.auditPositionDate",
+            "chart.auditIntervalEnd",
+            "chart.auditDateBasis",
+            "chart.auditFirstPublished",
+            "chart.auditCurrentOpen",
+            "chart.auditBasisInitial",
+            "chart.auditBasisPreviousHistoric",
+        ):
+            with self.subTest(key=key):
+                self.assertIn(key, self.catalog)
+        for normalized_field in (
+            "anspPositionTime",
+            "anspChartDateBasis",
+            "anspFirstPublishedTime",
+        ):
+            with self.subTest(normalized_field=normalized_field):
+                self.assertIn(normalized_field, self.app)
+        self.assertIn('anspInterval: ansp,', self.app)
+        self.assertIn('dom.tooltipAnspAudit.hidden = !values.anspInterval;', self.app)
+        self.assertIn(
+            'initial_ansp_scope_and_constituent_position_date: "chart.auditBasisInitial"',
+            self.app,
+        )
+        self.assertIn(
+            'previous_became_historical_date: "chart.auditBasisPreviousHistoric"',
+            self.app,
+        )
+
+    def test_method_copy_separates_ansp_effective_axis_from_first_publication(self):
+        chinese, english = self.catalog["method.bodyTwo"]
+        self.assertIn("2026-07-09", chinese)
+        self.assertIn("2026-07-13", chinese)
+        self.assertIn("首次发布日期", chinese)
+        self.assertIn("并非所有 ANSP 区间统一的生效日", chinese)
+        self.assertNotIn("旧制实名公开披露截至 2026-07-10", chinese)
+        self.assertIn("9 July 2026", english)
+        self.assertIn("13 July 2026", english)
+        self.assertIn("first ANSP publication date", english)
+        self.assertIn("not a universal effective date", english)
+        self.assertNotIn("run through 10 July 2026", english)
+
 
 if __name__ == "__main__":
     unittest.main()

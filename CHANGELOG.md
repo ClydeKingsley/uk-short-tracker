@@ -4,8 +4,24 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-08-26
+
 ### Fixed
 
+- Windows downloads now configure pythonnet in an application-specific .NET
+  AppDomain that permits the reviewed managed runtime files to load when
+  Explorer has propagated Mark of the Web from the GitHub ZIP. This fixes the
+  clean-PC `Failed to resolve Python.Runtime.Loader.Initialize` startup error
+  without modifying or unblocking the extracted program files;
+- Windows release builds now reproduce the downloaded-ZIP security-zone marker
+  and initialize the real pythonnet/Edge WebView2 backend before an archive can
+  pass, closing the gap in the earlier no-Python service-only smoke test;
+- ANSP charts now link each published aggregate to its actual effective state
+  interval instead of treating the constituent `position_date` as every
+  transition date. The initial 13 July publication is shown from its 9 July
+  position scope, later values begin when the previous value became historical,
+  and a missing current row ends in a gap rather than being extended or filled
+  with zero;
 - draft Release checksum verification now normalizes the Windows packager's
   CRLF line ending before comparing fields on the Linux metadata runner.
 

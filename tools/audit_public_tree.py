@@ -71,6 +71,7 @@ RESERVED_WINDOWS_NAMES = frozenset(
 TEXT_SUFFIXES = frozenset(
     {
         "",
+        ".config",
         ".css",
         ".editorconfig",
         ".gitattributes",

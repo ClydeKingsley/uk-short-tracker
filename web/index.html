@@ -446,6 +446,21 @@
                   <div id="tooltipAnspRow"><dt><i class="tooltip-dot dot-ansp"></i>ANSP</dt><dd id="tooltipAnsp">—</dd></div>
                   <div id="tooltipPriceRow"><dt><i class="tooltip-dot dot-price"></i><span data-i18n="chart.tooltipPrice">收盘价</span></dt><dd id="tooltipPrice">—</dd></div>
                 </dl>
+                <div
+                  id="tooltipAnspAudit"
+                  role="group"
+                  aria-label="ANSP 数据审计"
+                  data-i18n-aria-label="chart.auditTitle"
+                  hidden
+                >
+                  <dl>
+                    <div><dt data-i18n="chart.auditEffectiveFrom">生效日</dt><dd id="tooltipAnspEffective">—</dd></div>
+                    <div><dt data-i18n="chart.auditPositionDate">FCA 原始持仓日</dt><dd id="tooltipAnspPositionDate">—</dd></div>
+                    <div><dt data-i18n="chart.auditIntervalEnd">区间截止</dt><dd id="tooltipAnspIntervalEnd">—</dd></div>
+                    <div><dt data-i18n="chart.auditDateBasis">图表日期依据</dt><dd id="tooltipAnspDateBasis">—</dd></div>
+                    <div><dt data-i18n="chart.auditFirstPublished">首次发布</dt><dd id="tooltipAnspFirstPublished">—</dd></div>
+                  </dl>
+                </div>
               </div>
 
               <div class="chart-state chart-loading" id="chartLoading" role="status">
@@ -495,8 +510,9 @@
                 个百分点门槛时无需更新。因此，它不是市场全部空头权益（short interest）的精确日度总量。
               </p>
               <p data-i18n="method.bodyTwo">
-                旧制实名公开披露截至 2026-07-10；ANSP 新制自 2026-07-13 起适用，通常在持仓日后的第 2 个工作日（T+2）自中午起发布。
-                页面分别标示 FCA 仓位日期与行情日期；行情更新更晚，并不代表 FCA 仓位也已更新。
+                初始 ANSP 范围内的持仓可从 2026-07-09 在事件轴上生效；2026-07-13 是首批 ANSP 的首次发布日期和图中制度标记，并非所有 ANSP
+                区间统一的生效日。此后每个区间从前一数值转为历史之日开始；旧制重建序列与 ANSP 始终分开，FCA 原始持仓日也另行显示。FCA
+                通常在相关持仓工作日后的第 2 个工作日（T+2）自中午起发布报告。
               </p>
             </div>
           </section>

@@ -67,11 +67,16 @@
 |---|---|---|---|
 | `Date the aggregated net short position became historical` | `became_historical_date` | date | 该 ANSP 被新值替代、所有构成跌破报告门槛，或股票退出 RSL 的日期 |
 
-数据库保留 FCA 原始 `position_date`。API 为避免暗示新制度在开始前已有历史汇总，会将用于绘图的 `date` 最早限制为 `2026-07-13`，同时保留：
+数据库保留 FCA 原始 `position_date`。该字段是组成某个聚合值的通知中最晚的持仓日期；迟报或更正可以使连续两次聚合值的 `position_date` 倒退，因此它不是每个聚合值的生效横坐标。
 
-- 原始 `position_date`；
-- `transition_date_clamped`；
-- 历史行的 `became_historical_date`。
+API 按 ISIN 和 `became_historical_date` 升序，把 ANSP 值链接为 step-after 状态区间：
+
+1. FCA 在 `2026-07-13` 首次发布的 ANSP 代表 `2026-07-09` 午夜的持仓。初始 RSL 批次即使 `date_added = 2026-07-13`，`ansp_scope_start` 仍为 `2026-07-09`；首次发布后新增的 RSL 股票使用实际 `date_added`；
+2. 第一条历史值的 `date` 为 `max(ansp_scope_start, 第一条 position_date)`；
+3. 后续历史值的 `date` 是上一条的 `became_historical_date`；
+4. 当前值的 `date` 是最后一条历史值的 `became_historical_date`；没有历史值时，使用 `max(ansp_scope_start, 当前 position_date)`。
+
+`first_published_on = 2026-07-13` 是公开制度标记，不替代上述持仓/区间生效日。API 同时保留原始 `position_date`、历史行的 `became_historical_date`、区间终点 `interval_end` 和 `chart_date_basis`，供 tooltip 与审计使用。若没有 current 行，最后一条历史区间在自身 `became_historical_date` 结束，此后必须显示断档，不得补零。
 
 ### 2.4 Reportable Shares List `reportable_shares`
 
@@ -88,7 +93,7 @@ RSL 用于标记当前 `reportable` 状态和选择 `primary_isin`，不是历�
 
 | 属性 | `legacy_named` 派生序列 | FCA `ansp_*` 序列 |
 |---|---|---|
-| 制度 | 旧制，2026-07-13 前 | 新制，自 2026-07-13 起 |
+| 制度 | 旧制公开实名披露口径 | ANSP 于 2026-07-13 首次公开；首批值代表 2026-07-09 午夜持仓 |
 | 公开门槛 | 单个持仓人通常 >= 0.50% | 纳入 FCA 汇总的单个可报告仓位通常 >= 0.20% |
 | 身份 | 公开持仓人 | 匿名，不公开构成人数 |
 | 数值形成 | 应用重放公开事件后求和 | FCA 官方公司级合计 |
@@ -295,15 +300,22 @@ data/raw/<source_key>/<sha256>/<file_name>
 
 | 字段 | 类型 | 含义 |
 |---|---|---|
-| `date` | date | 图表日期；不会早于 `2026-07-13` |
-| `position_date` | date | FCA 原始 position date |
+| `date` | date | 聚合值有效区间起点；首条使用 scope/组成通知日期，后续使用上一状态的历史化日期，不是网页公布日 |
+| `position_date` | date | FCA 原始组成通知 position date；可倒退，不作为后续状态的生效日 |
 | `became_historical_date` | date/null | 历史 ANSP 被替代日期；当前行没有 |
+| `interval_end` | date/null | 该值的有效区间终点；历史行等于自身 `became_historical_date`，current 为 null |
+| `chart_date_basis` | enum | `initial_ansp_scope_and_constituent_position_date` 或 `previous_became_historical_date` |
+| `chart_interpolation` | constant | `step_after`；值从 `date` 起保持至 `interval_end` 或下一状态 |
+| `ansp_scope_start` | date | 初始批次为 `2026-07-09`；首次发布后加入 RSL 的股票为其实际 `date_added` |
+| `first_published_on` | date | `2026-07-13`；用于公开制度标记，不是每个值的横坐标 |
 | `value` | number | FCA ANSP，百分点 |
 | `unit` | constant | `percent_of_issued_share_capital` |
 | `isin` | text | FCA ISIN |
 | `is_current` | boolean | 是否来自当前 ANSP 文件 |
-| `transition_date_clamped` | boolean | 图表日期是否因制度边界被限制 |
+| `transition_date_clamped` | boolean | 兼容性诊断：`date` 是否不同于原始 `position_date`；日期依据以 `chart_date_basis` 为准 |
 | `regime` | constant | `anonymous_fca_ansp` |
+
+例如 4IMPRINT 的历史值依次为 `1.05% (position 2026-06-29, end 2026-07-14)`、`0.85% (position 2026-07-14, end 2026-08-03)`、`0.56% (position 2026-08-03, end 2026-08-05)`，而 current `0.27%` 的原始 position date 倒退到 `2026-05-01`。正确图表日期仍依次为 `2026-07-09`、`2026-07-14`、`2026-08-03`、`2026-08-05`。
 
 `coverage` 为四个激活数据集分别返回快照 URL、哈希、大小、获取/导入/激活时间、行数和质量画像。它是页面“数据新鲜度”和审计信息的依据。
 
@@ -552,17 +564,29 @@ Yahoo 是独立、可替换的第三方 provider。价格对象不能写入 FCA 
 ```json
 {
   "items": [
-    {"date": "2026-07-13", "legacy_percent": null, "ansp_percent": 1.25}
+    {"date": "2026-07-09", "legacy_percent": null, "ansp_percent": 1.05}
   ],
   "legacy": [],
-  "ansp": [],
+  "ansp": [
+    {
+      "date": "2026-07-09",
+      "position_date": "2026-06-29",
+      "became_historical_date": "2026-07-14",
+      "interval_end": "2026-07-14",
+      "value": 1.05,
+      "chart_date_basis": "initial_ansp_scope_and_constituent_position_date",
+      "chart_interpolation": "step_after",
+      "ansp_scope_start": "2026-07-09",
+      "first_published_on": "2026-07-13"
+    }
+  ],
   "coverage": {},
   "methodology": {},
   "latest_date": "2026-08-21"
 }
 ```
 
-前端也接受分别提供的 `legacy` 和 `ansp` 数组。不要通过填补数值把两个制度变成同一个连续指标。
+前端也接受分别提供的 `legacy` 和 `ansp` 数组。不要通过填补数值把两个制度变成同一个连续指标；即使两种口径都出现 `2026-07-09`，也不得连接两条 trace。没有 current ANSP 时，应在最后一条历史值的 `interval_end` 终止 ANSP trace 并保留断档。
 
 ### `GET /api/security/{id}/prices`
 
@@ -636,6 +660,9 @@ JSON POST 正文上限为 64 KiB，必须是 UTF-8 JSON 对象。
 - 排行榜缺少某个证券不等于其市场 short interest 为零；ANSP 只包含达到 FCA 报告门槛并被纳入计算的净空头仓位。
 - 排行榜以当前 ANSP 行/ISIN 为粒度；不得因 `security_id` 相同而合并不同股份类别。
 - 当前快照中的较早 `position_date` 不等于文件下载失败或快照陈旧；下载新鲜度必须从 `source`/`coverage` 判断。
+- ANSP `position_date` 可以因迟报或更正而倒退；图表必须使用链接后的有效区间 `date`，tooltip/审计仍显示原始日期。
+- `2026-07-13` 是首份 ANSP 的公开制度标记，首批 ANSP 的持仓范围从 `2026-07-09` 午夜起；两个日期不得互相替代。
+- 缺少 current ANSP 表示公开数据在最后一个 `interval_end` 后未知，必须画断档而不是 0%。
 - FCA 没有发布的阈值以下仓位、豁免仓位及无法公开的构成不能由本工具补全。
 - 旧制行数、持仓人数和新制 ANSP 不能相互推导。
 - 价格代码自动匹配必须复核；FCA ISIN 与 Yahoo ticker 是两个独立身份域。

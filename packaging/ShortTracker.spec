@@ -12,6 +12,7 @@ version_path = Path(os.environ["SHORT_TRACKER_VERSION_INFO"]).resolve()
 manifest_path = repo_root / "packaging" / "windows.manifest"
 
 datas = [(str(repo_root / "web"), "web")]
+datas += [(str(repo_root / "launcher" / "pythonnet-netfx.config"), "launcher")]
 datas += collect_data_files("openpyxl")
 datas += collect_data_files("pythonnet")
 binaries = collect_dynamic_libs("pythonnet")

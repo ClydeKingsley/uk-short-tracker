@@ -47,6 +47,13 @@ or SmartScreen warning until the project has a trusted code-signing identity
 and reputation. A SHA-256 checksum verifies bytes; it does not replace a code
 signature.
 
+Starting with v0.2.2, the desktop shell uses an application-specific .NET
+configuration so its reviewed bundled assemblies can load when Windows retains
+Mark of the Web from the downloaded ZIP. You do not need to install Python,
+move the folder, or manually unblock every DLL. The release build applies the
+same Internet-zone marker to `Python.Runtime.dll` and initializes the real Edge
+WebView2 backend as a regression test.
+
 ### Local files and updates
 
 Program files stay in the extracted folder and are treated as read-only. User
@@ -172,7 +179,8 @@ audit, and builds a windowed `onedir` bundle with one visible
 `Short Tracker.exe`. Its extracted-package smoke test covers the native WebView2
 lifecycle, duplicate launch handling, static assets, safe window-close shutdown,
 automatic-sync settings, a random port, and an isolated data directory. It also
-checks that the program folder was not modified at runtime. The build reconciles
+checks a downloaded-ZIP Mark-of-the-Web fixture and confirms that the program
+folder was not modified at runtime. The build reconciles
 the actual PyInstaller module graph and bundled binary versions with complete
 third-party terms under `LICENSES`, then writes a ZIP, release manifest, and
 SHA-256 file. Missing or altered licence material fails the build and archive

@@ -22,6 +22,9 @@
    *
    * GET /api/security/{id}/short-series
    *   -> { items: [{ date, legacy_percent: number|null, ansp_percent: number|null }],
+   *        legacy?: [{ date, value }],
+   *        ansp?: [{ date, value, position_date?, interval_end?: date|null,
+   *                  is_current?: boolean, chart_date_basis?, first_published_on? }],
    *        source?: { name? }, latest_date? }
    *      A normalized alternative [{ date, value, regime: "legacy"|"ansp" }] is accepted.
    *
@@ -169,6 +172,12 @@
     "tooltipLegacy",
     "tooltipAnspRow",
     "tooltipAnsp",
+    "tooltipAnspAudit",
+    "tooltipAnspEffective",
+    "tooltipAnspPositionDate",
+    "tooltipAnspIntervalEnd",
+    "tooltipAnspDateBasis",
+    "tooltipAnspFirstPublished",
     "tooltipPriceRow",
     "tooltipPrice",
     "chartLoading",
@@ -376,6 +385,16 @@
     return Number.isFinite(parsed) ? parsed : null;
   }
 
+  function toOptionalBoolean(value) {
+    if (value === null || value === undefined || value === "") return null;
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number") return value === 1 ? true : value === 0 ? false : null;
+    const normalized = String(value).trim().toLowerCase();
+    if (["true", "yes", "y", "1"].includes(normalized)) return true;
+    if (["false", "no", "n", "0"].includes(normalized)) return false;
+    return null;
+  }
+
   function toTime(value) {
     if (value === null || value === undefined || value === "") return null;
     if (typeof value === "number") {
@@ -397,6 +416,15 @@
 
   function formatDate(time) {
     return Number.isFinite(time) ? dateFormatter.format(new Date(time)) : "—";
+  }
+
+  function formatAnspDateBasis(value) {
+    const translationKeys = {
+      initial_ansp_scope_and_constituent_position_date: "chart.auditBasisInitial",
+      previous_became_historical_date: "chart.auditBasisPreviousHistoric",
+    };
+    if (!value) return "—";
+    return t(translationKeys[value] || "chart.auditBasisOther");
   }
 
   function formatDateTime(value) {
@@ -727,7 +755,10 @@
       }
     }
 
-    const rawItems = direct.length ? direct : forced;
+    // The flattened `items` collection is retained for older servers, while the
+    // regime-specific collections carry richer ANSP interval metadata. Process
+    // them afterwards so those authoritative fields win when a date is repeated.
+    const rawItems = forced.length ? [...direct, ...forced] : direct;
     const byDate = new Map();
     for (const raw of rawItems) {
       const time = toTime(firstDefined(raw, ["date", "position_date", "as_of_date", "as_of", "timestamp", "time"]));
@@ -766,9 +797,64 @@
       }
       if (legacy === null && ansp === null) continue;
 
-      const existing = byDate.get(time) || { time, date: isoDate(time), legacy: null, ansp: null };
+      const existing = byDate.get(time) || {
+        time,
+        date: isoDate(time),
+        legacy: null,
+        ansp: null,
+        anspIntervalEnd: null,
+        anspIntervalEndDate: null,
+        anspIsCurrent: null,
+        anspPositionTime: null,
+        anspPositionDate: null,
+        anspChartDateBasis: null,
+        anspFirstPublishedTime: null,
+        anspFirstPublishedDate: null,
+      };
       if (legacy !== null) existing.legacy = legacy;
-      if (ansp !== null) existing.ansp = ansp;
+      if (ansp !== null) {
+        existing.ansp = ansp;
+        const intervalEnd = toTime(firstDefined(raw, [
+          "interval_end",
+          "intervalEnd",
+          "became_historical_date",
+          "date_became_historical",
+          "end_date",
+          "valid_to",
+        ]));
+        const isCurrent = toOptionalBoolean(firstDefined(raw, ["is_current", "isCurrent", "current", "active"]));
+        const positionTime = toTime(firstDefined(raw, [
+          "position_date",
+          "positionDate",
+          "constituent_position_date",
+          "raw_position_date",
+        ]));
+        const chartDateBasis = firstDefined(raw, ["chart_date_basis", "chartDateBasis", "date_basis"]);
+        const firstPublishedTime = toTime(firstDefined(raw, [
+          "first_published_on",
+          "firstPublishedOn",
+          "first_publication_date",
+        ]));
+        if (Number.isFinite(intervalEnd)) {
+          existing.anspIntervalEnd = intervalEnd;
+          existing.anspIntervalEndDate = isoDate(intervalEnd);
+          if (isCurrent === null) existing.anspIsCurrent = false;
+        }
+        if (isCurrent !== null) existing.anspIsCurrent = isCurrent;
+        if (isCurrent === true) {
+          existing.anspIntervalEnd = null;
+          existing.anspIntervalEndDate = null;
+        }
+        if (Number.isFinite(positionTime)) {
+          existing.anspPositionTime = positionTime;
+          existing.anspPositionDate = isoDate(positionTime);
+        }
+        if (chartDateBasis) existing.anspChartDateBasis = String(chartDateBasis);
+        if (Number.isFinite(firstPublishedTime)) {
+          existing.anspFirstPublishedTime = firstPublishedTime;
+          existing.anspFirstPublishedDate = isoDate(firstPublishedTime);
+        }
+      }
       byDate.set(time, existing);
     }
     return [...byDate.values()].sort((a, b) => a.time - b.time);
@@ -874,23 +960,51 @@
     return items.reduce((earliest, item) => Math.min(earliest, item[field] || Infinity), Infinity);
   }
 
+  function buildShortIntervals(items, field, effectiveEnd = field === "legacy" ? REGIME_SWITCH : Infinity) {
+    const points = items
+      .filter((item) => Number.isFinite(item[field]) && Number.isFinite(item.time))
+      .sort((a, b) => a.time - b.time);
+
+    return points.map((point, index) => {
+      const nextTime = points[index + 1]?.time ?? Infinity;
+      let intervalEnd = nextTime;
+      let isCurrent = null;
+
+      if (field === "ansp") {
+        isCurrent = point.anspIsCurrent;
+        if (isCurrent === true) intervalEnd = Infinity;
+        else if (Number.isFinite(point.anspIntervalEnd)) intervalEnd = Math.min(point.anspIntervalEnd, nextTime);
+        else if (!Number.isFinite(nextTime) && isCurrent === false) intervalEnd = point.time;
+      }
+
+      intervalEnd = Math.min(intervalEnd, effectiveEnd);
+      return {
+        time: point.time,
+        value: point[field],
+        intervalEnd,
+        isCurrent,
+        point,
+      };
+    }).filter((interval) => interval.intervalEnd > interval.time);
+  }
+
   function latestShortPoint(items, start = -Infinity, end = Infinity) {
-    for (let index = items.length - 1; index >= 0; index -= 1) {
-      const item = items[index];
-      if (item.time < start || item.time > end) continue;
-      if (Number.isFinite(item.ansp)) return { time: item.time, value: item.ansp, regime: "ansp" };
-      if (Number.isFinite(item.legacy)) return { time: item.time, value: item.legacy, regime: "legacy" };
+    const target = Number.isFinite(end) ? end : newestTime(items);
+    if (!Number.isFinite(target) || target < start) return null;
+    for (const field of ["ansp", "legacy"]) {
+      const match = valueAtOrBefore(items, target, field);
+      if (match && match.intervalEnd > start) return { ...match, regime: field };
     }
     return null;
   }
 
   function firstShortPoint(items, start = -Infinity, end = Infinity, regime = null) {
-    for (const item of items) {
-      if (item.time < start || item.time > end) continue;
-      if ((!regime || regime === "ansp") && Number.isFinite(item.ansp)) return { time: item.time, value: item.ansp, regime: "ansp" };
-      if ((!regime || regime === "legacy") && Number.isFinite(item.legacy)) return { time: item.time, value: item.legacy, regime: "legacy" };
-    }
-    return null;
+    const fields = regime ? [regime] : ["legacy", "ansp"];
+    const matches = fields.flatMap((field) => buildShortIntervals(items, field)
+      .filter((interval) => interval.intervalEnd > start && interval.time <= end)
+      .map((interval) => ({ ...interval, regime: field })));
+    matches.sort((a, b) => a.time - b.time);
+    return matches[0] || null;
   }
 
   function lastPricePoint(items, start = -Infinity, end = Infinity) {
@@ -2019,14 +2133,12 @@
   }
 
   function valueAtOrBefore(items, target, field) {
-    const index = lowerBound(items, target);
-    const candidates = [];
-    if (index < items.length && items[index].time === target) candidates.push(items[index]);
-    for (let cursor = Math.min(index - 1, items.length - 1); cursor >= 0 && candidates.length < 3; cursor -= 1) {
-      candidates.push(items[cursor]);
+    const intervals = buildShortIntervals(items, field);
+    for (let index = intervals.length - 1; index >= 0; index -= 1) {
+      const interval = intervals[index];
+      if (interval.time <= target && target < interval.intervalEnd) return interval;
     }
-    const match = candidates.find((item) => Number.isFinite(item[field]));
-    return match ? { time: match.time, value: match[field] } : null;
+    return null;
   }
 
   class TrackerChart {
@@ -2088,8 +2200,16 @@
       this.shortSeries = [...(shortSeries || [])].sort((a, b) => a.time - b.time);
       this.prices = [...(prices || [])].sort((a, b) => a.time - b.time);
       this.currency = options.currency || this.currency || "GBP";
+      const intervalEnds = this.shortSeries
+        .map((item) => item.anspIntervalEnd)
+        .filter(Number.isFinite);
+      const currentTime = this.shortSeries.some((item) => item.anspIsCurrent === true)
+        ? Date.now()
+        : null;
       this.observationTimes = [...new Set([
         ...this.shortSeries.map((item) => item.time),
+        ...intervalEnds,
+        ...(Number.isFinite(currentTime) ? [currentTime] : []),
         ...this.prices.map((item) => item.time),
       ])].sort((a, b) => a - b);
       if (this.observationTimes.length) {
@@ -2238,15 +2358,9 @@
     getShortBounds() {
       const values = [];
       for (const field of ["legacy", "ansp"]) {
-        const predecessor = valueAtOrBefore(this.shortSeries, this.viewStart, field);
-        if (predecessor && (field !== "legacy" || this.viewStart < REGIME_SWITCH) && (field !== "ansp" || this.viewEnd >= REGIME_SWITCH)) {
-          values.push(predecessor.value);
+        for (const interval of buildShortIntervals(this.shortSeries, field)) {
+          if (interval.intervalEnd > this.viewStart && interval.time <= this.viewEnd) values.push(interval.value);
         }
-      }
-      for (const item of this.shortSeries) {
-        if (item.time < this.viewStart || item.time > this.viewEnd) continue;
-        if (Number.isFinite(item.legacy)) values.push(item.legacy);
-        if (Number.isFinite(item.ansp)) values.push(item.ansp);
       }
       if (!values.length) return { min: 0, max: 1, hasData: false };
       const maxValue = Math.max(...values, 0.25);
@@ -2296,7 +2410,7 @@
       ctx.rect(this.layout.left, upper.top, this.layout.plotWidth, upper.height);
       ctx.clip();
       this.drawStepSeries("legacy", this.colors.legacy, shortBounds, upper, Math.min(this.viewEnd, REGIME_SWITCH));
-      this.drawStepSeries("ansp", this.colors.ansp, shortBounds, upper, this.viewEnd, Math.max(this.viewStart, REGIME_SWITCH));
+      this.drawStepSeries("ansp", this.colors.ansp, shortBounds, upper);
       ctx.restore();
 
       ctx.save();
@@ -2419,14 +2533,15 @@
       const start = Math.max(this.viewStart, effectiveStart);
       const end = Math.min(this.viewEnd, effectiveEnd);
       if (end < start) return;
-      const points = this.shortSeries.filter((item) => Number.isFinite(item[field]) && item.time >= start && item.time <= end);
-      const predecessor = valueAtOrBefore(this.shortSeries, start, field);
-      const path = [];
-      if (predecessor && predecessor.time <= start) path.push({ time: start, value: predecessor.value });
-      path.push(...points.map((item) => ({ time: item.time, value: item[field] })));
-      if (!path.length) return;
+      const intervals = buildShortIntervals(this.shortSeries, field, effectiveEnd)
+        .map((interval) => ({
+          ...interval,
+          visibleStart: Math.max(start, interval.time),
+          visibleEnd: Math.min(end, interval.intervalEnd),
+        }))
+        .filter((interval) => interval.visibleEnd > interval.visibleStart);
+      if (!intervals.length) return;
 
-      const deduped = path.filter((item, index) => index === 0 || item.time !== path[index - 1].time || item.value !== path[index - 1].value);
       const ctx = this.ctx;
       ctx.save();
       ctx.strokeStyle = color;
@@ -2434,16 +2549,20 @@
       ctx.lineJoin = "round";
       ctx.lineCap = "round";
       ctx.beginPath();
-      let previous = deduped[0];
-      ctx.moveTo(this.xForTime(previous.time), this.yForValue(previous.value, bounds, panel));
-      for (let index = 1; index < deduped.length; index += 1) {
-        const current = deduped[index];
-        const x = this.xForTime(current.time);
-        ctx.lineTo(x, this.yForValue(previous.value, bounds, panel));
-        ctx.lineTo(x, this.yForValue(current.value, bounds, panel));
-        previous = current;
+      let previous = null;
+      for (const interval of intervals) {
+        const startX = this.xForTime(interval.visibleStart);
+        const endX = this.xForTime(interval.visibleEnd);
+        const y = this.yForValue(interval.value, bounds, panel);
+        if (previous && previous.visibleEnd === interval.visibleStart) {
+          ctx.lineTo(startX, this.yForValue(previous.value, bounds, panel));
+          ctx.lineTo(startX, y);
+        } else {
+          ctx.moveTo(startX, y);
+        }
+        ctx.lineTo(endX, y);
+        previous = interval;
       }
-      ctx.lineTo(this.xForTime(end), this.yForValue(previous.value, bounds, panel));
       ctx.stroke();
       ctx.restore();
     }
@@ -2521,12 +2640,13 @@
 
     tooltipValues(time) {
       const legacy = time < REGIME_SWITCH ? valueAtOrBefore(this.shortSeries, time, "legacy") : null;
-      const ansp = time >= REGIME_SWITCH ? valueAtOrBefore(this.shortSeries, time, "ansp") : null;
+      const ansp = valueAtOrBefore(this.shortSeries, time, "ansp");
       const price = nearestItem(this.prices, time);
       const maxPriceDistance = 5 * DAY;
       return {
         legacy: legacy?.value ?? null,
         ansp: ansp?.value ?? null,
+        anspInterval: ansp,
         price: price && Math.abs(price.time - time) <= maxPriceDistance ? price : null,
       };
     }
@@ -2572,6 +2692,23 @@
       setText(dom.tooltipPrice, values.price ? formatCurrency(values.price.close, this.currency) : "—");
       dom.tooltipLegacyRow.hidden = !Number.isFinite(values.legacy);
       dom.tooltipAnspRow.hidden = !Number.isFinite(values.ansp);
+      dom.tooltipAnspAudit.hidden = !values.anspInterval;
+      if (values.anspInterval) {
+        const interval = values.anspInterval;
+        const point = interval.point || {};
+        const intervalEnd = Number.isFinite(point.anspIntervalEnd)
+          ? formatDate(point.anspIntervalEnd)
+          : interval.isCurrent === true
+            ? t("chart.auditCurrentOpen")
+            : Number.isFinite(interval.intervalEnd)
+              ? formatDate(interval.intervalEnd)
+              : t("chart.auditOpen");
+        setText(dom.tooltipAnspEffective, formatDate(interval.time));
+        setText(dom.tooltipAnspPositionDate, formatDate(point.anspPositionTime));
+        setText(dom.tooltipAnspIntervalEnd, intervalEnd);
+        setText(dom.tooltipAnspDateBasis, formatAnspDateBasis(point.anspChartDateBasis));
+        setText(dom.tooltipAnspFirstPublished, formatDate(point.anspFirstPublishedTime));
+      }
       dom.tooltipPriceRow.hidden = !values.price;
       this.tooltip.hidden = false;
 

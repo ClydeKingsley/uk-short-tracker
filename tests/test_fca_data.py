@@ -15,6 +15,7 @@ from short_tracker.fca import (
     FCADataService,
     FCA_SOURCES,
     MAX_CURRENT_RANKING_LIMIT,
+    _ansp_chart_schedule,
 )
 
 
@@ -116,6 +117,38 @@ def fixture_payloads(current_value="0.90"):
     }
 
 
+def add_4imprint_timeline_fixture(payloads, *, include_current=True):
+    """Add the FCA example whose current constituent date moves backwards."""
+
+    by_key = {source.key: source for source in FCA_SOURCES}
+    current_rows = [
+        "ACME PLC,GB0000000001,0.90,20/07/2026",
+    ]
+    if include_current:
+        current_rows.append("4IMPRINT GROUP PLC,GB0006640972,0.27,01/05/2026")
+    payloads[by_key["ansp_current_csv"].url] = (
+        "Name of Company,International Securities Identification Number (ISIN),"
+        "Aggregated net short position (%),Position date\n"
+        + "\n".join(current_rows)
+        + "\n"
+    ).encode("utf-8")
+    payloads[by_key["ansp_historic_csv"].url] = (
+        "Name of Company,International Securities Identification Number (ISIN),"
+        "Aggregated net short position (%),Position date,"
+        "Date the aggregated net short position became historical\n"
+        "ACME PLC,GB0000000001,0.75,13/07/2026,20/07/2026\n"
+        "4IMPRINT GROUP PLC,GB0006640972,1.05,29/06/2026,14/07/2026\n"
+        "4IMPRINT GROUP PLC,GB0006640972,0.85,14/07/2026,03/08/2026\n"
+        "4IMPRINT GROUP PLC,GB0006640972,0.56,03/08/2026,05/08/2026\n"
+    ).encode("utf-8")
+    payloads[by_key["rsl_csv"].url] = (
+        "Share ISIN,Company name,Date added,"
+        "Class of share (Main or Other Class of Shares)\n"
+        "GB0000000001,ACME PLC,13/07/2026,Main\n"
+        "GB0006640972,4IMPRINT GROUP PLC,13/07/2026,Main\n"
+    ).encode("utf-8")
+
+
 class FCADataServiceTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -195,6 +228,84 @@ class FCADataServiceTests(unittest.TestCase):
         self.assertEqual("anonymous_fca_ansp", series["current"]["regime"])
         self.assertEqual("ACME PLC", series["security"]["name"])
         self.assertTrue(series["security"]["reportable"])
+
+    def test_ansp_timeline_uses_effective_intervals_not_regressed_position_dates(self):
+        add_4imprint_timeline_fixture(self.opener.payloads)
+        self.service.sync()
+
+        series = self.service.get_short_series("GB0006640972")
+
+        self.assertIsNotNone(series)
+        self.assertEqual(
+            [
+                ("2026-07-09", 1.05, "2026-06-29", "2026-07-14", False),
+                ("2026-07-14", 0.85, "2026-07-14", "2026-08-03", False),
+                ("2026-08-03", 0.56, "2026-08-03", "2026-08-05", False),
+                ("2026-08-05", 0.27, "2026-05-01", None, True),
+            ],
+            [
+                (
+                    row["date"],
+                    row["value"],
+                    row["position_date"],
+                    row["became_historical_date"],
+                    row["is_current"],
+                )
+                for row in series["ansp"]
+            ],
+        )
+        self.assertEqual(
+            [
+                "initial_ansp_scope_and_constituent_position_date",
+                "previous_became_historical_date",
+                "previous_became_historical_date",
+                "previous_became_historical_date",
+            ],
+            [row["chart_date_basis"] for row in series["ansp"]],
+        )
+        self.assertTrue(
+            all(row["chart_interpolation"] == "step_after" for row in series["ansp"])
+        )
+        self.assertTrue(
+            all(row["first_published_on"] == "2026-07-13" for row in series["ansp"])
+        )
+        self.assertTrue(
+            all(row["ansp_scope_start"] == "2026-07-09" for row in series["ansp"])
+        )
+        self.assertEqual(
+            ["2026-07-14", "2026-08-03", "2026-08-05", None],
+            [row["interval_end"] for row in series["ansp"]],
+        )
+        self.assertEqual("2026-08-05", series["current"]["date"])
+        self.assertEqual("2026-05-01", series["current"]["position_date"])
+
+    def test_ansp_missing_current_ends_in_gap_without_zero_fill(self):
+        add_4imprint_timeline_fixture(self.opener.payloads, include_current=False)
+        self.service.sync()
+
+        series = self.service.get_short_series("GB0006640972")
+
+        self.assertIsNotNone(series)
+        self.assertIsNone(series["current"])
+        self.assertEqual([1.05, 0.85, 0.56], [row["value"] for row in series["ansp"]])
+        self.assertFalse(any(row["is_current"] for row in series["ansp"]))
+        self.assertFalse(any(row["value"] == 0 for row in series["ansp"]))
+        self.assertEqual("2026-08-05", series["ansp"][-1]["interval_end"])
+
+    def test_ansp_later_rsl_entry_sets_scope_for_current_only_series(self):
+        historic, current = _ansp_chart_schedule(
+            [],
+            current_position_date="2026-05-01",
+            rsl_date_added="2026-08-01",
+        )
+
+        self.assertEqual([], historic)
+        self.assertEqual("2026-08-01", current["date"])
+        self.assertEqual("2026-08-01", current["ansp_scope_start"])
+        self.assertEqual(
+            "initial_ansp_scope_and_constituent_position_date",
+            current["chart_date_basis"],
+        )
 
     def test_sync_is_idempotent_and_failed_revision_does_not_move_heads(self):
         first = self.service.sync()

@@ -86,6 +86,9 @@ def _bundle_self_test(arguments: list[str]) -> int:
     args = parser.parse_args(arguments)
     payload: dict[str, object]
     try:
+        from launcher.desktop_launcher import _configure_pythonnet_runtime
+
+        _configure_pythonnet_runtime()
         import clr
         import webview
         from webview.guilib import initialize
