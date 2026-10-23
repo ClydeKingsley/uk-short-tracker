@@ -6,6 +6,7 @@ import hashlib
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from openpyxl import Workbook
 
@@ -341,6 +342,139 @@ class FCADataServiceTests(unittest.TestCase):
         )["snapshot_id"]
         self.assertEqual(active_before_failure, active_after_failure)
         self.assertEqual(0.95, self.service.get_short_series("GB0000000001")["current"]["value"])
+
+    def test_current_date_header_alias_preserves_dates_and_timeline(self):
+        current_url = next(
+            source.url for source in FCA_SOURCES if source.key == "ansp_current_csv"
+        )
+        add_4imprint_timeline_fixture(self.opener.payloads)
+        original = self.opener.payloads[current_url]
+        self.service.sync()
+        before = self.service.get_short_series("GB0006640972")
+
+        for header in (
+            "Position date (of latest position date notified)",
+            " POSITION DATE (of latest position date notified) ",
+        ):
+            with self.subTest(header=header):
+                self.opener.payloads[current_url] = b"\xef\xbb\xbf" + original.replace(
+                    b"Position date\n", header.encode("utf-8") + b"\n"
+                )
+                synced = self.service.sync()
+                after = self.service.get_short_series("GB0006640972")
+                self.assertEqual("success", synced["status"])
+                self.assertEqual(before["ansp"], after["ansp"])
+                self.assertEqual("2026-05-01", after["current"]["position_date"])
+                self.assertEqual("2026-08-05", after["current"]["date"])
+                self.assertEqual(0.27, after["current"]["value"])
+
+    def test_missing_csv_headers_report_source_and_preserve_all_heads(self):
+        self.service.sync()
+        heads = [dict(row) for row in self.db.query_all(
+            "SELECT * FROM dataset_heads ORDER BY dataset_key"
+        )]
+        by_key = {source.key: source for source in FCA_SOURCES}
+        cases = (
+            ("ansp_current_csv", "Position date", "Unexpected date"),
+            ("ansp_historic_csv", "Position date", "Unexpected date"),
+            ("rsl_csv", "Date added", "Unexpected date"),
+        )
+        for source_key, expected, replacement in cases:
+            with self.subTest(source_key=source_key):
+                source = by_key[source_key]
+                original = self.opener.payloads[source.url]
+                # Header validation must run even if no data rows follow.
+                self.opener.payloads[source.url] = (
+                    original.splitlines()[0].replace(expected.encode(), replacement.encode())
+                    + b"\n"
+                )
+                try:
+                    with self.assertRaises(FCADataError) as raised:
+                        self.service.sync()
+                    self.assertIn(source.file_name, str(raised.exception))
+                    self.assertIn("missing required CSV headers", str(raised.exception))
+                    self.assertIn(expected, str(raised.exception))
+                    self.assertEqual(heads, [dict(row) for row in self.db.query_all(
+                        "SELECT * FROM dataset_heads ORDER BY dataset_key"
+                    )])
+                finally:
+                    self.opener.payloads[source.url] = original
+
+    def test_blank_current_date_rolls_back_partial_import_and_preserves_all_heads(self):
+        self.service.sync()
+        heads = [dict(row) for row in self.db.query_all(
+            "SELECT * FROM dataset_heads ORDER BY dataset_key"
+        )]
+        source = next(source for source in FCA_SOURCES if source.key == "ansp_current_csv")
+        self.opener.payloads[source.url] = (
+            "Name of Company,International Securities Identification Number (ISIN),"
+            "Aggregated net short position (%),Position date (of latest position date notified)\n"
+            "ACME PLC,GB0000000001,1.20,20/07/2026\n"
+            "NEW PLC,GB0000000002,0.80,\n"
+        ).encode("utf-8")
+        with self.assertRaises(FCADataError) as raised:
+            self.service.sync()
+        self.assertIn(source.file_name, str(raised.exception))
+        self.assertIn("row 3", str(raised.exception))
+        self.assertIn("required value is blank for 'Position date'", str(raised.exception))
+        self.assertEqual(heads, [dict(row) for row in self.db.query_all(
+            "SELECT * FROM dataset_heads ORDER BY dataset_key"
+        )])
+        failed = self.db.query_one(
+            "SELECT * FROM import_runs WHERE dataset_key = 'ansp_current' ORDER BY id DESC LIMIT 1"
+        )
+        self.assertEqual("failed", failed["status"])
+        self.assertEqual(0, self.db.query_one(
+            "SELECT COUNT(*) AS n FROM ansp_current WHERE snapshot_id = ?",
+            (failed["snapshot_id"],),
+        )["n"])
+        self.assertEqual(0.90, self.service.get_short_series("GB0000000001")["current"]["value"])
+
+    def test_duplicate_date_aliases_are_rejected_instead_of_silently_overwritten(self):
+        source = next(source for source in FCA_SOURCES if source.key == "ansp_current_csv")
+        self.opener.payloads[source.url] = self.opener.payloads[source.url].replace(
+            b"Position date\n", b"Position date,Position date (of latest position date notified)\n"
+        ).replace(b"20/07/2026\n", b"20/07/2026,21/07/2026\n")
+        with self.assertRaises(FCADataError) as raised:
+            self.service.sync()
+        self.assertIn(source.file_name, str(raised.exception))
+        self.assertIn("duplicate required CSV headers: Position date", str(raised.exception))
+        self.assertEqual(0, self.db.query_one("SELECT COUNT(*) AS n FROM dataset_heads")["n"])
+
+    def test_previously_failed_snapshot_retries_without_version_change(self):
+        source = next(source for source in FCA_SOURCES if source.key == "ansp_current_csv")
+        self.opener.payloads[source.url] = self.opener.payloads[source.url].replace(
+            b"Position date\n", b"Position date (of latest position date notified)\n"
+        )
+        # Model the old importer's failure after these exact bytes were archived.
+        with patch.object(
+            self.service, "_import_ansp_current",
+            side_effect=FCADataError("required date is blank"),
+        ):
+            with self.assertRaises(FCADataError):
+                self.service.sync()
+        failed = self.db.query_one(
+            "SELECT * FROM import_runs WHERE dataset_key = 'ansp_current'"
+        )
+        recovered = self.service.sync()
+        imported = recovered["imports"]["ansp_current"]
+        self.assertEqual("success", recovered["status"])
+        self.assertFalse(recovered["changed"])
+        self.assertEqual(failed["id"], imported["import_run_id"])
+        self.assertEqual(failed["snapshot_id"], imported["snapshot_id"])
+        self.assertFalse(imported["reused"])
+        self.assertEqual("2026-07-20", self.service.get_short_series("GB0000000001")["current"]["position_date"])
+
+    def test_rsl_optional_values_remain_optional_with_required_headers(self):
+        source = next(source for source in FCA_SOURCES if source.key == "rsl_csv")
+        self.opener.payloads[source.url] = self.opener.payloads[source.url].replace(
+            b"13/07/2026,Main\n", b",\n"
+        )
+        result = self.service.sync()
+        self.assertEqual("success", result["status"])
+        row = self.db.query_one("SELECT date_added, share_class FROM rsl_entries")
+        self.assertIsNone(row["date_added"])
+        self.assertEqual("", row["share_class"])
 
     def test_current_rankings_preserve_isin_grain_and_stable_ties(self):
         current_url = next(

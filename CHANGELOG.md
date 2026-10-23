@@ -4,6 +4,60 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-10-23
+
+### Fixed
+
+- Restored FCA synchronisation after the current ANSP CSV renamed its position
+  date column to "Position date (of latest position date notified)". Both the
+  original and revised headings are accepted without changing date semantics.
+- Validate required CSV columns before import and report the source, row and
+  field for blank required values. A failed import still preserves the last good data.
+- Stop polling immediately when a sync fails, show its error, and only report
+  completion after success. Background failures no longer show a success toast.
+
+## [0.3.1] - 2026-09-05
+
+### Changed
+
+- Refined the research workspace with a dark translucent sticky toolbar, layered
+  light surfaces, inset highlights, soft shadows and clearer numeric emphasis.
+- Added staggered panel and table entrances, sliding range and language indicators,
+  contextual loading feedback, dialog entrances and pointer-responsive lighting.
+- Motion follows semantic changes, coalesces rapid updates and leaves displayed
+  values and chart geometry intact. Background checks do not replay unchanged data.
+
+### Added
+
+- A local motion control that follows the system preference by default and lets
+  users explicitly enable full motion or reduce it. The choice persists locally.
+- Five ANSP distribution bands with actual security counts and shares of the
+  loaded snapshot, independent of filtering and pagination.
+
+## [0.3.0] - 2026-09-05
+
+### Changed
+
+- Redesigned the desktop research workspace with compact layouts, clearer system
+  typography, aligned numeric values, denser rankings and responsive panels.
+- Unified chart colours with the documented contract: blue ANSP, dashed amber
+  legacy positions and charcoal prices; enlarged Canvas labels and axis spacing.
+- Added restrained interaction feedback that respects reduced-motion preferences.
+
+### Added
+
+- Current-snapshot coverage, highest ANSP, median and securities at or above 2%,
+  calculated from all loaded records with explicit scope independent of filters.
+- Five recent securities stored on the device, with quick reopen and clear actions.
+- Chart range summaries showing visible dates, effective short-position nodes and
+  price observation days without treating missing data as zero.
+- Ctrl+K and slash shortcuts to focus security search, in both interface languages.
+
+### Fixed
+
+- Securities with unchanged short positions no longer throw an empty CSS-class
+  error while updating their change indicator.
+
 ## [0.2.2] - 2026-08-26
 
 ### Fixed

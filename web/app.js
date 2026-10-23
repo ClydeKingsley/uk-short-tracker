@@ -72,9 +72,12 @@
   const API_ROOT = "/api";
   const LANGUAGE_STORAGE_KEY = "short-tracker-language";
   const DISMISSED_UPDATE_STORAGE_KEY = "short-tracker-dismissed-update";
+  const RECENT_SECURITIES_STORAGE_KEY = "short-tracker-recent-securities";
+  const RECENT_SECURITIES_LIMIT = 5;
   const STATUS_POLL_INTERVAL = 30_000;
   const SUPPORTED_LANGUAGES = new Set(["zh-CN", "en-GB"]);
   const COPY = window.SHORT_TRACKER_COPY || {};
+  const renderNotifications = new Map();
 
   function readStoredLanguage() {
     try {
@@ -82,6 +85,31 @@
       return SUPPORTED_LANGUAGES.has(stored) ? stored : "zh-CN";
     } catch {
       return "zh-CN";
+    }
+  }
+
+  function normalizeRecentSecurities(items) {
+    if (!Array.isArray(items)) return [];
+    const seen = new Set();
+    return items.filter((item) => {
+      if (!item || typeof item.id !== "string" || !item.id.trim() || item.id.length > 256 ||
+          typeof item.name !== "string" || !item.name.trim() || item.name.length > 256 || seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    }).slice(0, RECENT_SECURITIES_LIMIT).map((item) => ({
+      id: item.id,
+      name: item.name,
+      ticker: typeof item.ticker === "string" ? item.ticker.slice(0, 40) : "—",
+      isin: typeof item.isin === "string" ? item.isin.slice(0, 40) : "—",
+    }));
+  }
+
+  function readRecentSecurities() {
+    try {
+      const stored = window.localStorage.getItem(RECENT_SECURITIES_STORAGE_KEY);
+      return stored && stored.length <= 20_000 ? normalizeRecentSecurities(JSON.parse(stored)) : [];
+    } catch {
+      return [];
     }
   }
 
@@ -101,9 +129,14 @@
     "securitySearchResults",
     "searchSpinner",
     "searchClear",
+    "searchShortcutButton",
+    "recentSecuritiesList",
+    "recentSecuritiesEmpty",
+    "clearRecentButton",
     "connectionStatus",
     "connectionLabel",
     "connectionBanner",
+    "connectionBannerTitle",
     "connectionMessage",
     "retryStatusButton",
     "syncButton",
@@ -128,8 +161,17 @@
     "rankingSource",
     "rankingCoverage",
     "rankingTotalBadge",
+    "snapshotStatCount",
+    "snapshotStatMaximum",
+    "snapshotStatLeader",
+    "snapshotStatMedian",
+    "snapshotStatAboveThreshold",
+    "snapshotStatsScope",
     "rankingsBarChart",
     "rankingAxisMax",
+    "rankingDistributionStack",
+    "rankingDistributionRows",
+    "rankingDistributionScope",
     "rankingSearchInput",
     "rankingPageSize",
     "rankingTable",
@@ -164,6 +206,11 @@
     "kpiCoverageMeta",
     "rangeSelector",
     "resetViewButton",
+    "rangeSummary",
+    "rangeSummaryPeriod",
+    "rangeSummaryLegacy",
+    "rangeSummaryAnsp",
+    "rangeSummaryPrices",
     "chartViewport",
     "trackerChart",
     "chartTooltip",
@@ -230,6 +277,7 @@
     rankingsState: "loading",
     rankings: [],
     rankingsMeta: {},
+    recentSecurities: readRecentSecurities(),
     rankingFilter: "",
     rankingSort: { key: "rank", direction: "asc" },
     rankingPage: 1,
@@ -238,6 +286,8 @@
     selectedSecurity: null,
     shortSeries: [],
     prices: [],
+    shortLoaded: false,
+    pricesLoaded: false,
     shortMeta: {},
     priceMeta: {},
     currency: "GBP",
@@ -270,6 +320,26 @@
       Object.prototype.hasOwnProperty.call(variables, name) ? String(variables[name]) : match
     ));
   }
+
+  function notifyRender(type, values, extra = {}) {
+    const detail = {
+      type,
+      signature: JSON.stringify([state.language, values]),
+      view: state.activeView,
+      securityId: state.activeView === "security" ? state.selectedSecurity?.id || null : null,
+      ...extra,
+    };
+    renderNotifications.set(type, detail);
+    document.dispatchEvent(new CustomEvent("shorttracker:render", { detail }));
+  }
+
+  // Deferred motion.js can attach after the first synchronous app render.
+  // Replay only the latest event per surface once all deferred scripts are ready.
+  document.addEventListener("DOMContentLoaded", () => {
+    for (const detail of renderNotifications.values()) {
+      document.dispatchEvent(new CustomEvent("shorttracker:render", { detail }));
+    }
+  }, { once: true });
 
   function configureFormatters() {
     const locale = state.language;
@@ -325,6 +395,7 @@
   }
 
   function refreshLocalizedView() {
+    renderRecentSecurities();
     if (state.rankings.length) renderRankings();
     if (state.rankingsState === "error") setRankingsState("error", t("error.rankingUnavailable"));
     if (state.selectedSecurity) {
@@ -556,6 +627,7 @@
     not_found: "error.notFound",
     internal_error: "error.server",
     upstream_data_error: "error.server",
+    sync_failed: "sync.failedDetail",
   });
 
   function errorMessage(error, fallback = t("error.requestFailed")) {
@@ -1023,6 +1095,7 @@
     );
     setText(dom.connectionLabel, t(labelKey, variables));
     dom.connectionBanner.hidden = kind !== "offline";
+    setText(dom.connectionBannerTitle, t(labelKey === "connection.syncFailed" ? "connection.syncFailureTitle" : "connection.errorTitle"));
     if (detailKey) setText(dom.connectionMessage, t(detailKey, variables));
   }
 
@@ -1032,11 +1105,14 @@
     dom.securityEmpty.hidden = true;
     dom.rankingsView.hidden = next !== "rankings";
     dom.securityWorkspace.hidden = next !== "security";
+    document.body.dataset.view = next;
+    renderRecentSecurities();
     if (focus) {
       const target = next === "rankings" ? dom.rankingsView : dom.securityWorkspace;
       target.setAttribute("tabindex", "-1");
       window.setTimeout(() => target.focus({ preventScroll: true }), 0);
     }
+    notifyRender("view", [next, next === "security" ? state.selectedSecurity?.id || null : null]);
   }
 
   function setWorkspaceVisible(visible) {
@@ -1050,6 +1126,51 @@
       url.searchParams.delete("security");
       window.history.replaceState({ view: "rankings" }, "", url);
     }
+  }
+
+  function renderRecentSecurities() {
+    const focusedId = dom.recentSecuritiesList.contains(document.activeElement)
+      ? document.activeElement.dataset.securityId : null;
+    dom.recentSecuritiesList.replaceChildren();
+    dom.recentSecuritiesEmpty.hidden = state.recentSecurities.length > 0;
+    dom.clearRecentButton.hidden = state.recentSecurities.length === 0;
+    for (const security of state.recentSecurities) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "recent-security";
+      button.dataset.securityId = security.id;
+      button.setAttribute("aria-label", t("recent.open", { name: security.name }));
+      button.title = security.name;
+      if (state.activeView === "security" && state.selectedSecurity?.id === security.id) {
+        button.classList.add("is-current");
+        button.setAttribute("aria-current", "page");
+      }
+      const name = document.createElement("span");
+      name.className = "recent-name";
+      name.textContent = security.name;
+      button.append(name);
+      if (security.ticker && security.ticker !== "—") {
+        const ticker = document.createElement("span");
+        ticker.className = "recent-symbol";
+        ticker.textContent = security.ticker;
+        button.append(ticker);
+      }
+      button.addEventListener("click", () => selectSecurity(security));
+      dom.recentSecuritiesList.append(button);
+      if (security.id === focusedId) button.focus({ preventScroll: true });
+    }
+  }
+
+  function rememberSecurity(security) {
+    state.recentSecurities = normalizeRecentSecurities([
+      security, ...state.recentSecurities.filter((item) => item.id !== security.id),
+    ]);
+    try {
+      window.localStorage.setItem(RECENT_SECURITIES_STORAGE_KEY, JSON.stringify(state.recentSecurities));
+    } catch {
+      // Keep the current-session shortcuts usable when storage is unavailable.
+    }
+    renderRecentSecurities();
   }
 
   function updateRangeButtons(range) {
@@ -1152,7 +1273,7 @@
         const change = latestShort.value - first.value;
         const formattedChange = `${change > 0 ? "+" : ""}${percentFormatter.format(change)}`;
         setText(dom.kpiChange, t(Math.abs(change) === 1 ? "kpi.percentagePoint" : "kpi.percentagePoints", { value: formattedChange }));
-        dom.kpiChange.classList.add(change > 0 ? "is-positive" : change < 0 ? "is-negative" : "");
+        if (change !== 0) dom.kpiChange.classList.add(change > 0 ? "is-positive" : "is-negative");
         setText(dom.kpiChangeMeta, t("kpi.dateRange", { start: formatDate(first.time), end: formatDate(latestShort.time) }));
       } else if (crossesRegime) {
         setText(dom.kpiChange, t("kpi.regimeChange"));
@@ -1179,6 +1300,7 @@
 
     const rangeShort = pointsInRange(state.shortSeries, viewStart, viewEnd);
     const rangePrices = pointsInRange(state.prices, viewStart, viewEnd);
+    updateRangeSummary(viewStart, viewEnd, rangeShort, rangePrices);
     const coverageStart = Math.min(oldestTime(rangeShort) ?? Infinity, oldestTime(rangePrices) ?? Infinity);
     const coverageEnd = Math.max(newestTime(rangeShort) ?? -Infinity, newestTime(rangePrices) ?? -Infinity);
     if (Number.isFinite(coverageStart) && Number.isFinite(coverageEnd)) {
@@ -1204,6 +1326,27 @@
         end: formatDate(viewEnd),
       }),
     );
+    notifyRender("kpis", [state.selectedSecurity?.id || null, isoDate(viewStart), isoDate(viewEnd),
+      dom.kpiShort.textContent, dom.kpiShortMeta.textContent,
+      dom.kpiChange.textContent, dom.kpiChangeMeta.textContent,
+      dom.kpiPrice.textContent, dom.kpiPriceMeta.textContent,
+      dom.kpiCoverage.textContent, dom.kpiCoverageMeta.textContent,
+    ]);
+  }
+
+  function updateRangeSummary(start, end, shortPoints, pricePoints) {
+    const available = Number.isFinite(start) && Number.isFinite(end) &&
+      Boolean(state.shortSeries.length || state.prices.length);
+    dom.rangeSummary.hidden = !available;
+    if (!available) return;
+    setText(dom.rangeSummaryPeriod, `${isoDate(start)} — ${isoDate(end)}`);
+    dom.rangeSummaryPeriod.title = t("kpi.dateRange", { start: formatDate(start), end: formatDate(end) });
+    setText(dom.rangeSummaryLegacy, state.shortLoaded
+      ? integerFormatter.format(shortPoints.filter((point) => Number.isFinite(point.legacy)).length) : "—");
+    setText(dom.rangeSummaryAnsp, state.shortLoaded
+      ? integerFormatter.format(shortPoints.filter((point) => Number.isFinite(point.ansp)).length) : "—");
+    setText(dom.rangeSummaryPrices, state.pricesLoaded
+      ? integerFormatter.format(new Set(pricePoints.map((point) => isoDate(point.time))).size) : "—");
   }
 
   function setRankingsState(kind, message = "") {
@@ -1244,6 +1387,39 @@
       dom.rankingSnapshotOrb.classList.add("is-empty");
       setText(dom.rankingSnapshotHeadline, t("ranking.checkedNoTime"));
     }
+  }
+
+  function calculateSnapshotStatistics(allItems) {
+    // Use the entire loaded ranking, before table filtering, sorting or pagination.
+    const eligible = allItems.filter((item) => Number.isFinite(item.shortPercent));
+    if (!eligible.length) return { count: 0, maximum: null, median: null, aboveThreshold: 0, leader: null };
+    const sorted = [...eligible].sort((a, b) => a.shortPercent - b.shortPercent);
+    const middle = Math.floor(sorted.length / 2);
+    const median = sorted.length % 2 ? sorted[middle].shortPercent
+      : (sorted[middle - 1].shortPercent + sorted[middle].shortPercent) / 2;
+    return {
+      count: sorted.length,
+      maximum: sorted[sorted.length - 1].shortPercent,
+      median,
+      aboveThreshold: sorted.filter((item) => item.shortPercent >= 2).length,
+      leader: sorted[sorted.length - 1].security,
+    };
+  }
+
+  function renderSnapshotStatistics() {
+    const stats = calculateSnapshotStatistics(state.rankings);
+    const total = state.rankingsMeta.sourceTotal ?? state.rankingsMeta.total ?? stats.count;
+    const partial = state.rankingsMeta.sourceTruncated || total !== stats.count;
+    setText(dom.snapshotStatCount, integerFormatter.format(stats.count));
+    setText(dom.snapshotStatMaximum, formatPercent(stats.maximum));
+    setText(dom.snapshotStatLeader, stats.leader?.name || "—");
+    dom.snapshotStatLeader.title = stats.leader?.name || "";
+    setText(dom.snapshotStatMedian, formatPercent(stats.median));
+    setText(dom.snapshotStatAboveThreshold, stats.count ? integerFormatter.format(stats.aboveThreshold) : "—");
+    setText(dom.snapshotStatsScope, t(!stats.count ? "stats.scopeEmpty" : partial ? "stats.scopePartial" : "stats.scope", {
+      count: integerFormatter.format(stats.count), total: integerFormatter.format(total),
+    }));
+    dom.snapshotStatsScope.classList.toggle("is-partial", Boolean(partial && stats.count));
   }
 
   function renderRankingBars() {
@@ -1301,6 +1477,75 @@
       fragment.append(row);
     }
     dom.rankingsBarChart.append(fragment);
+    notifyRender("bars", [axisMax, top.map((item) => [item.security.id, item.security.name,
+      item.security.ticker, item.rank, item.shortPercent, item.positionDate])]);
+  }
+
+  function calculateRankingDistribution(allItems) {
+    const limits = [0.5, 1, 2, 5, Infinity];
+    const counts = [0, 0, 0, 0, 0];
+    let total = 0;
+    for (const item of allItems) {
+      if (!Number.isFinite(item.shortPercent)) continue;
+      const index = limits.findIndex((limit) => item.shortPercent < limit);
+      counts[index] += 1;
+      total += 1;
+    }
+    return { total, counts, shares: counts.map((count) => total ? count / total * 100 : 0) };
+  }
+
+  function renderRankingDistribution() {
+    // Its denominator is the same complete loaded set as the overview statistics.
+    // Table filtering and pagination deliberately do not participate.
+    const distribution = calculateRankingDistribution(state.rankings);
+    const sourceTotal = state.rankingsMeta.sourceTotal ?? state.rankingsMeta.total ?? distribution.total;
+    const partial = Boolean(state.rankingsMeta.sourceTruncated || sourceTotal !== distribution.total);
+    const bandKeys = ["distribution.bandUnderHalf", "distribution.bandHalfToOne", "distribution.bandOneToTwo",
+      "distribution.bandTwoToFive", "distribution.bandFivePlus"];
+    const shareFormatter = new Intl.NumberFormat(state.language, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    dom.rankingDistributionStack.replaceChildren();
+    dom.rankingDistributionRows.replaceChildren();
+    dom.rankingDistributionStack.hidden = distribution.total === 0;
+    for (let index = 0; index < bandKeys.length; index += 1) {
+      const band = t(bandKeys[index]);
+      const count = integerFormatter.format(distribution.counts[index]);
+      const share = distribution.total ? `${shareFormatter.format(distribution.shares[index])}%` : "—";
+      const segment = document.createElement("span");
+      segment.className = "distribution-segment";
+      segment.dataset.band = String(index);
+      segment.style.setProperty("--distribution-share", `${distribution.shares[index]}%`);
+      dom.rankingDistributionStack.append(segment);
+
+      const row = document.createElement("li");
+      row.className = "distribution-row";
+      row.dataset.band = String(index);
+      row.setAttribute("aria-label", t("distribution.rowAria", { band, count, share }));
+      const label = document.createElement("span");
+      label.className = "distribution-label";
+      label.textContent = band;
+      const track = document.createElement("span");
+      track.className = "distribution-track";
+      track.setAttribute("aria-hidden", "true");
+      const fill = document.createElement("span");
+      fill.className = "distribution-fill";
+      fill.style.setProperty("--distribution-share", `${distribution.shares[index]}%`);
+      track.append(fill);
+      const countLabel = document.createElement("strong");
+      countLabel.className = "distribution-count";
+      countLabel.textContent = count;
+      countLabel.title = t("distribution.count", { count });
+      const shareLabel = document.createElement("span");
+      shareLabel.className = "distribution-share";
+      shareLabel.textContent = share;
+      row.append(label, track, countLabel, shareLabel);
+      dom.rankingDistributionRows.append(row);
+    }
+    setText(dom.rankingDistributionScope, t(distribution.total === 0 ? "distribution.scopeEmpty"
+      : partial ? "distribution.scopePartial" : "distribution.scope", {
+      count: integerFormatter.format(distribution.total), total: integerFormatter.format(sourceTotal),
+    }));
+    dom.rankingDistributionScope.classList.toggle("is-partial", partial && distribution.total > 0);
+    notifyRender("distribution", [distribution.total, distribution.counts, sourceTotal, partial]);
   }
 
   function rankingSearchText(item) {
@@ -1443,11 +1688,18 @@
     dom.rankingPreviousPage.disabled = state.rankingPage <= 1;
     dom.rankingNextPage.disabled = state.rankingPage >= totalPages;
     updateRankingSortHeaders();
+    notifyRender("table", [state.rankingFilter, state.rankingSort.key, state.rankingSort.direction,
+      state.rankingPage, state.rankingPageSize, filtered.length,
+      pageItems.map((item) => [item.security.id, item.security.name, item.security.ticker, item.security.isin,
+        item.rank, item.shortPercent, item.positionDate, item.ageDays]),
+    ]);
   }
 
   function renderRankings() {
     updateRankingSnapshot();
+    renderSnapshotStatistics();
     renderRankingBars();
+    renderRankingDistribution();
     renderRankingTable();
   }
 
@@ -1626,7 +1878,7 @@
     const enabled = automatic.enabled !== false;
     const running = automatic.running === true || state.status?.sync?.running === true;
     const closing = automatic.closing === true || state.status?.sync?.closing === true;
-    const failed = Boolean(automatic.last_error);
+    const failed = state.status ? syncHasFailed(state.status) : Boolean(automatic.last_error);
 
     if (!state.settingsDirty) {
       dom.autoSyncEnabled.checked = enabled;
@@ -1804,6 +2056,17 @@
       : {};
   }
 
+  function syncHasFailed(status = state.status) {
+    const sync = status?.sync || {};
+    if (sync.running || status?.auto_sync?.running) return false;
+    if (sync.last_error) return true;
+    const lastRun = sync.database_last_run;
+    if (lastRun?.status === "failed") return true;
+    // The scheduler listener may briefly retain the previous failure after success.
+    if (lastRun?.status === "success") return false;
+    return Boolean(status?.auto_sync?.last_error);
+  }
+
   async function loadStatus({ autoSelect = false, quiet = false } = {}) {
     const previousRunning = state.observedSyncRunning;
     const previousLastSyncAt = state.observedLastSyncAt;
@@ -1814,10 +2077,12 @@
       if (state.rankings.length) updateRankingSnapshot();
       const statusText = String(firstDefined(state.status, ["status", "state"], "ready")).toLowerCase();
       const syncing = Boolean(state.status?.sync?.running) || /queue|sync|progress|running/.test(statusText);
+      const failed = !syncing && syncHasFailed();
       const lastSyncAt = String(firstDefined(state.status, ["last_sync_at", "lastSyncAt"], "") || "");
       state.observedSyncRunning = syncing;
       state.observedLastSyncAt = lastSyncAt;
-      setConnectionState(syncing ? "loading" : "online", syncing ? "connection.syncing" : "connection.online");
+      if (failed) setConnectionState("offline", "connection.syncFailed", "sync.failedDetail");
+      else setConnectionState(syncing ? "loading" : "online", syncing ? "connection.syncing" : "connection.online");
       renderAutomationStatus();
       if (autoSelect && !state.selectedSecurity) {
         const params = new URLSearchParams(window.location.search);
@@ -1829,11 +2094,14 @@
           if (items[0]) await selectSecurity(items[0]);
         }
       }
-      const backgroundSyncCompleted = quiet && (
+      const backgroundSyncCompleted = quiet && !syncing && !failed && (
         (previousRunning && !syncing) ||
         (Boolean(previousLastSyncAt) && Boolean(lastSyncAt) && previousLastSyncAt !== lastSyncAt)
       );
-      if (backgroundSyncCompleted) {
+      if (quiet && previousRunning && failed && !dom.syncButton.disabled) {
+        showToast(t("sync.failedToast"), t("sync.failedDetail"), "error", 6500);
+      }
+      if (backgroundSyncCompleted && !dom.syncButton.disabled) {
         await loadRankings({ silent: state.activeView === "security" });
         if (state.activeView === "security" && state.selectedSecurity) {
           await loadSecurity(state.selectedSecurity.id, state.selectedSecurity, { updateUrl: false });
@@ -1879,6 +2147,9 @@
     state.selectedSecurity = fallback;
     state.shortSeries = [];
     state.prices = [];
+    state.shortLoaded = false;
+    state.pricesLoaded = false;
+    dom.rangeSummary.hidden = true;
     state.shortMeta = {};
     state.priceMeta = {};
     state.currency = fallback.currency || "GBP";
@@ -1906,12 +2177,15 @@
     const [detailResult, shortResult, priceResult] = requests;
     if (detailResult.status === "fulfilled") {
       state.selectedSecurity = mergeSecurityPayload(detailResult.value, fallback) || fallback;
+      rememberSecurity(state.selectedSecurity);
     }
     if (shortResult.status === "fulfilled") {
+      state.shortLoaded = true;
       state.shortSeries = normalizeShortSeries(shortResult.value);
       state.shortMeta = normalizeMeta(shortResult.value, t("source.fca"));
     }
     if (priceResult.status === "fulfilled") {
+      state.pricesLoaded = true;
       state.prices = normalizePrices(priceResult.value);
       state.priceMeta = normalizeMeta(priceResult.value, state.selectedSecurity?.priceSymbol ? t("source.dailyPrices") : t("common.unmatched"));
     }
@@ -1972,7 +2246,7 @@
         await loadSecurity(state.selectedSecurity.id, state.selectedSecurity, { updateUrl: false });
       }
     } catch (error) {
-      setConnectionState("offline", "connection.syncFailed", "error.requestFailed");
+      setConnectionState("offline", "connection.syncFailed", syncHasFailed() ? "sync.failedDetail" : "error.requestFailed");
       showToast(t("sync.failedToast"), errorMessage(error), "error", 6500);
     } finally {
       dom.syncButton.disabled = false;
@@ -1989,23 +2263,29 @@
     let consecutiveErrors = 0;
     while (Date.now() - started < timeout) {
       await waitDelay(1_200);
+      let payload;
       try {
-        const payload = await apiFetch("/status");
-        state.status = normalizeStatus(payload);
-        consecutiveErrors = 0;
-        const sync = state.status?.sync || {};
-        if (sync.running) {
-          setConnectionState("loading", "connection.syncing");
-          continue;
-        }
-        if (sync.last_error) throw new ApiError(t("error.server"), 500, { error: { code: "internal_error" } });
-        setConnectionState("online", "connection.online");
-        showToast(t("sync.complete"), t("sync.reloadedDetail"));
-        return state.status;
+        payload = await apiFetch("/status");
       } catch (error) {
         consecutiveErrors += 1;
         if (consecutiveErrors >= 3) throw error;
+        continue;
       }
+      state.status = normalizeStatus(payload);
+      consecutiveErrors = 0;
+      const sync = state.status?.sync || {};
+      state.observedSyncRunning = Boolean(sync.running);
+      state.observedLastSyncAt = String(firstDefined(state.status, ["last_sync_at", "lastSyncAt"], "") || "");
+      renderAutomationStatus();
+      if (sync.running) {
+        setConnectionState("loading", "connection.syncing");
+        continue;
+      }
+      // A completed failed sync is terminal, not a failed HTTP poll to retry.
+      if (syncHasFailed()) throw new ApiError(t("sync.failedDetail"), 500, { error: { code: "sync_failed" } });
+      setConnectionState("online", "connection.online");
+      showToast(t("sync.complete"), t("sync.reloadedDetail"));
+      return state.status;
     }
     setConnectionState("loading", "connection.syncBackground");
     showToast(t("sync.stillRunning"), t("sync.stillRunningDetail"), "success", 7000);
@@ -2164,14 +2444,14 @@
       this.onViewChange = options.onViewChange || (() => {});
       this.onRangeChange = options.onRangeChange || (() => {});
       this.colors = {
-        grid: "#e8e9e5",
-        gridStrong: "#d4d7d5",
-        text: "#788294",
-        ink: "#17243b",
-        legacy: "#d89332",
-        ansp: "#dc4f69",
-        price: "#2384b8",
-        marker: "#e0574f",
+        grid: "#e8edf3",
+        gridStrong: "#d4dde8",
+        text: "#68778c",
+        ink: "#14243b",
+        legacy: "#b67a23",
+        ansp: "#1763d6",
+        price: "#344962",
+        marker: "#8b94a3",
         surface: "#ffffff",
       };
 
@@ -2297,6 +2577,8 @@
         start: formatDate(this.viewStart),
         end: formatDate(this.viewEnd),
       }));
+      notifyRender("chart-range", [state.selectedSecurity?.id || null,
+        Math.round(this.viewStart), Math.round(this.viewEnd), source], { source });
     }
 
     resize() {
@@ -2325,11 +2607,11 @@
       const width = this.lastWidth || this.canvas.clientWidth;
       const height = this.lastHeight || this.canvas.clientHeight;
       const compact = width < 640;
-      const left = compact ? 49 : 65;
+      const left = compact ? 64 : 76;
       const right = compact ? 18 : 58;
-      const top = compact ? 28 : 34;
+      const top = 32;
       const bottom = compact ? 42 : 47;
-      const gap = compact ? 48 : 54;
+      const gap = 60;
       const plotWidth = Math.max(100, width - left - right);
       const usable = Math.max(220, height - top - bottom - gap);
       const upperHeight = usable * 0.58;
@@ -2439,7 +2721,7 @@
       const { upper, lower, left, plotRight } = this.layout;
       ctx.save();
       ctx.lineWidth = 1;
-      ctx.font = '10px "Cascadia Mono", Consolas, monospace';
+      ctx.font = '12px "Bahnschrift", "Segoe UI", "Microsoft YaHei UI", sans-serif';
       ctx.fillStyle = this.colors.text;
 
       for (let index = 0; index <= 4; index += 1) {
@@ -2489,7 +2771,7 @@
     drawPanelLabels() {
       const ctx = this.ctx;
       ctx.save();
-      ctx.font = '600 10px "Aptos", "Segoe UI", sans-serif';
+      ctx.font = '600 12px "Segoe UI", "Microsoft YaHei UI", sans-serif';
       ctx.textBaseline = "bottom";
       ctx.textAlign = "left";
       ctx.fillStyle = this.colors.ink;
@@ -2513,14 +2795,14 @@
       ctx.setLineDash([]);
 
       const label = t(this.layout.width < 560 ? "canvas.newRegimeCompact" : "canvas.newRegime");
-      ctx.font = '600 9px "Cascadia Mono", Consolas, monospace';
+      ctx.font = '600 11px "Bahnschrift", "Segoe UI", "Microsoft YaHei UI", sans-serif';
       const padding = 6;
       const boxWidth = ctx.measureText(label).width + padding * 2;
       const boxX = Math.max(this.layout.left, Math.min(x + 7, this.layout.plotRight - boxWidth));
       const boxY = this.layout.upper.top + 7;
-      ctx.fillStyle = "rgba(255, 240, 237, 0.96)";
+      ctx.fillStyle = "rgba(242, 245, 249, 0.96)";
       ctx.fillRect(boxX, boxY, boxWidth, 21);
-      ctx.strokeStyle = "rgba(224, 87, 79, 0.24)";
+      ctx.strokeStyle = "rgba(139, 148, 163, 0.3)";
       ctx.strokeRect(boxX + 0.5, boxY + 0.5, boxWidth - 1, 20);
       ctx.fillStyle = this.colors.marker;
       ctx.textAlign = "left";
@@ -2545,6 +2827,7 @@
       const ctx = this.ctx;
       ctx.save();
       ctx.strokeStyle = color;
+      ctx.setLineDash(field === "legacy" ? [5, 3] : []);
       ctx.lineWidth = 2.2;
       ctx.lineJoin = "round";
       ctx.lineCap = "round";
@@ -2572,8 +2855,8 @@
       if (!visible.length) return;
       const ctx = this.ctx;
       const gradient = ctx.createLinearGradient(0, panel.top, 0, panel.bottom);
-      gradient.addColorStop(0, "rgba(35, 132, 184, 0.18)");
-      gradient.addColorStop(1, "rgba(35, 132, 184, 0.015)");
+      gradient.addColorStop(0, "rgba(52, 73, 98, 0.13)");
+      gradient.addColorStop(1, "rgba(52, 73, 98, 0.012)");
       ctx.save();
       ctx.beginPath();
       visible.forEach((item, index) => {
@@ -2614,11 +2897,11 @@
       ctx.stroke();
 
       const label = formatAxisPrice(latest.close, this.currency);
-      ctx.font = '600 9px "Cascadia Mono", Consolas, monospace';
+      ctx.font = '600 11px "Bahnschrift", "Segoe UI", "Microsoft YaHei UI", sans-serif';
       const labelWidth = ctx.measureText(label).width + 11;
       const labelX = Math.min(this.layout.plotRight - labelWidth - 3, latestX + 7);
       const labelY = Math.max(panel.top + 3, Math.min(panel.bottom - 21, latestY - 10));
-      ctx.fillStyle = "rgba(35, 132, 184, 0.92)";
+      ctx.fillStyle = this.colors.price;
       ctx.fillRect(labelX, labelY, labelWidth, 19);
       ctx.fillStyle = "#fff";
       ctx.textAlign = "left";
@@ -2631,7 +2914,7 @@
       const ctx = this.ctx;
       ctx.save();
       ctx.fillStyle = this.colors.text;
-      ctx.font = '10px "Aptos", "Segoe UI", sans-serif';
+      ctx.font = '12px "Segoe UI", "Microsoft YaHei UI", sans-serif';
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(label, this.layout.left + this.layout.plotWidth / 2, panel.top + panel.height / 2);
@@ -2829,6 +3112,28 @@
   }
 
   function bindEvents() {
+    const focusSecuritySearch = () => {
+      dom.securitySearchInput.focus();
+      dom.securitySearchInput.select();
+    };
+    dom.searchShortcutButton.addEventListener("click", focusSecuritySearch);
+    document.addEventListener("keydown", (event) => {
+      if (event.defaultPrevented || event.isComposing || event.altKey || document.querySelector("dialog[open]")) return;
+      const searchChord = (event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "k";
+      const editable = event.target instanceof Element &&
+        (event.target.closest("input, textarea, select") || event.target.isContentEditable);
+      const searchSlash = event.key === "/" && !event.ctrlKey && !event.metaKey && !editable;
+      if (searchChord || searchSlash) {
+        event.preventDefault();
+        focusSecuritySearch();
+      }
+    });
+    dom.clearRecentButton.addEventListener("click", () => {
+      state.recentSecurities = [];
+      try { window.localStorage.removeItem(RECENT_SECURITIES_STORAGE_KEY); } catch { /* Session-only clearing remains available. */ }
+      renderRecentSecurities();
+      dom.securitySearchInput.focus();
+    });
     dom.languageSwitch.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-language]");
       if (!button || button.dataset.language === state.language) return;

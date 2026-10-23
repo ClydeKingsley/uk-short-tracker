@@ -975,15 +975,52 @@ class FCADataService:
         return inserted
 
     @staticmethod
-    def _csv_records(path: Path) -> Iterator[tuple[int, dict[str, str]]]:
+    def _csv_records(
+        path: Path,
+        *,
+        required_headers: tuple[str, ...],
+        header_aliases: Mapping[str, str] | None = None,
+        allow_blank: tuple[str, ...] = (),
+    ) -> Iterator[tuple[int, dict[str, str]]]:
+        aliases = {
+            _normalize_header(alias): _normalize_header(canonical)
+            for alias, canonical in (header_aliases or {}).items()
+        }
+        required = {_normalize_header(label): label for label in required_headers}
+        optional_values = {_normalize_header(label) for label in allow_blank}
+
+        def canonical_header(value: str) -> str:
+            normalized = _normalize_header(value)
+            return aliases.get(normalized, normalized)
+
         with path.open("r", encoding="utf-8-sig", newline="") as handle:
             reader = csv.DictReader(handle)
             if not reader.fieldnames:
                 raise FCADataError(f"CSV has no headers: {path.name}")
+            headers = [canonical_header(value) for value in reader.fieldnames]
+            missing = [label for key, label in required.items() if key not in headers]
+            if missing:
+                raise FCADataError(
+                    f"{path.name}: missing required CSV headers: {', '.join(missing)}"
+                )
+            ambiguous = [
+                label for key, label in required.items() if headers.count(key) > 1
+            ]
+            if ambiguous:
+                raise FCADataError(
+                    f"{path.name}: duplicate required CSV headers: {', '.join(ambiguous)}"
+                )
             for row_number, raw in enumerate(reader, start=2):
                 if not any(_clean_text(value) for value in raw.values()):
                     continue
-                yield row_number, {_normalize_header(key): value for key, value in raw.items()}
+                row = {canonical_header(key): value for key, value in raw.items()}
+                for key, label in required.items():
+                    if key not in optional_values and not _clean_text(row.get(key)):
+                        raise FCADataError(
+                            f"{path.name}: row {row_number}: required value is blank "
+                            f"for {label!r}"
+                        )
+                yield row_number, row
 
     def _import_ansp_current(
         self, conn: sqlite3.Connection, path: Path, snapshot_id: int
@@ -995,7 +1032,20 @@ class FCADataService:
         latest: str | None = None
         seen: set[tuple[str, str]] = set()
         duplicate_keys = 0
-        for row_number, row in self._csv_records(path):
+        for row_number, row in self._csv_records(
+            path,
+            required_headers=(
+                "Name of Company",
+                "International Securities Identification Number (ISIN)",
+                "Aggregated net short position (%)",
+                "Position date",
+            ),
+            # FCA clarified this header in autumn 2026. It still represents
+            # the latest constituent notification date, not publication day.
+            header_aliases={
+                "Position date (of latest position date notified)": "Position date",
+            },
+        ):
             company = _clean_text(row.get("nameofcompany"))
             isin = _clean_text(row.get("internationalsecuritiesidentificationnumberisin")).upper()
             bp = _position_to_bp(row.get("aggregatednetshortposition"))
@@ -1037,7 +1087,16 @@ class FCADataService:
         became_max: str | None = None
         seen: set[tuple[str, str, str, int]] = set()
         duplicate_keys = 0
-        for row_number, row in self._csv_records(path):
+        for row_number, row in self._csv_records(
+            path,
+            required_headers=(
+                "Name of Company",
+                "International Securities Identification Number (ISIN)",
+                "Aggregated net short position (%)",
+                "Position date",
+                "Date the aggregated net short position became historical",
+            ),
+        ):
             company = _clean_text(row.get("nameofcompany"))
             isin = _clean_text(row.get("internationalsecuritiesidentificationnumberisin")).upper()
             bp = _position_to_bp(row.get("aggregatednetshortposition"))
@@ -1093,7 +1152,16 @@ class FCADataService:
         seen_isins: set[str] = set()
         duplicate_isins = 0
         main_count = 0
-        for row_number, row in self._csv_records(path):
+        for row_number, row in self._csv_records(
+            path,
+            required_headers=(
+                "Share ISIN",
+                "Company name",
+                "Date added",
+                "Class of share (Main or Other Class of Shares)",
+            ),
+            allow_blank=("Date added", "Class of share (Main or Other Class of Shares)"),
+        ):
             isin = _clean_text(row.get("shareisin")).upper()
             company = _clean_text(row.get("companyname"))
             date_added = _parse_date(row.get("dateadded"), allow_blank=True)
