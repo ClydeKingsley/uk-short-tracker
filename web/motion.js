@@ -16,8 +16,8 @@
   const pendingRenders = new Map();
   const easing = "cubic-bezier(.2,.75,.2,1)";
   const selectors = {
-    rankings: ".rankings-intro, .ranking-snapshot, .snapshot-overview, .ranking-chart-card, .ranking-table-card, .ranking-distribution-card",
-    security: ".security-identity, .data-provenance, .kpi-card, .chart-card",
+    rankings: ".rankings-intro, .ranking-snapshot, .snapshot-stat, .ranking-table-card, .ranking-chart-card, .ranking-distribution-card, .recent-position-card",
+    security: ".security-identity, .data-provenance, .kpi-card, .chart-card, .detail-insights",
   };
   let viewFrame = 0;
   let renderFrame = 0;
@@ -81,7 +81,8 @@
       clearTimeout(kpiTimer);
       kpiTimer = setTimeout(() => reveal(".kpi-value:not(.is-loading)", 35), 120);
     } else if (type === "chart-range" && !["pan", "zoom"].includes(source)) {
-      animate(document.querySelector(".range-summary"), [{ backgroundColor: "#e2eeff" }, { backgroundColor: "#f5f8fd" }], { duration: 500 });
+      animate(document.querySelector(".range-summary"), [{ backgroundColor: "#ccebf0" }, { backgroundColor: "#edf6f8" }], { duration: 500 });
+      reveal(".detail-metrics dd, .detail-position-node", 24);
     }
   }
 

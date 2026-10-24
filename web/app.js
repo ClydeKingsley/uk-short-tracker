@@ -133,6 +133,9 @@
     "recentSecuritiesList",
     "recentSecuritiesEmpty",
     "clearRecentButton",
+    "navOverviewButton",
+    "navSearchButton",
+    "navSettingsButton",
     "connectionStatus",
     "connectionLabel",
     "connectionBanner",
@@ -172,6 +175,10 @@
     "rankingDistributionStack",
     "rankingDistributionRows",
     "rankingDistributionScope",
+    "recentPositionList",
+    "recentPositionEmpty",
+    "rankingFilterChips",
+    "rankingClearFiltersButton",
     "rankingSearchInput",
     "rankingPageSize",
     "rankingTable",
@@ -204,6 +211,16 @@
     "kpiPriceMeta",
     "kpiCoverage",
     "kpiCoverageMeta",
+    "detailSnapshotRank",
+    "detailSnapshotRankMeta",
+    "detailAnspHigh",
+    "detailAnspLow",
+    "detailPriceHigh",
+    "detailPriceLow",
+    "detailPriceChange",
+    "detailPriceRangeMeta",
+    "detailPositionNodes",
+    "detailPositionNodesEmpty",
     "rangeSelector",
     "resetViewButton",
     "rangeSummary",
@@ -279,6 +296,7 @@
     rankingsMeta: {},
     recentSecurities: readRecentSecurities(),
     rankingFilter: "",
+    rankingChip: "all",
     rankingSort: { key: "rank", direction: "asc" },
     rankingPage: 1,
     rankingPageSize: 25,
@@ -521,7 +539,7 @@
   function formatCurrency(value, currency = "GBP") {
     if (!Number.isFinite(value)) return "—";
     const unit = String(currency || "GBP").trim();
-    if (/^(GBp|GBX|p)$/i.test(unit)) {
+    if (unit === "GBp" || /^(GBX|p)$/i.test(unit)) {
       return `${new Intl.NumberFormat(state.language, {
         minimumFractionDigits: value < 10 ? 2 : 0,
         maximumFractionDigits: 2,
@@ -541,10 +559,11 @@
 
   function formatAxisPrice(value, currency) {
     if (!Number.isFinite(value)) return "—";
-    if (/^(GBp|GBX|p)$/i.test(String(currency || ""))) {
+    const unit = String(currency || "").trim();
+    if (unit === "GBp" || /^(GBX|p)$/i.test(unit)) {
       return `${formatCompactNumber(value)}p`;
     }
-    const symbol = { GBP: "£", USD: "$", EUR: "€" }[String(currency || "").toUpperCase()] || "";
+    const symbol = { GBP: "£", USD: "$", EUR: "€" }[unit.toUpperCase()] || "";
     return `${symbol}${formatCompactNumber(value)}`;
   }
 
@@ -939,7 +958,7 @@
       const time = toTime(firstDefined(raw, ["date", "price_date", "trading_date", "timestamp", "time"]));
       const close = toNumber(firstDefined(raw, ["close", "adj_close", "adjusted_close", "price", "value"]));
       if (!Number.isFinite(time) || !Number.isFinite(close)) continue;
-      byDate.set(time, { time, date: isoDate(time), close });
+      byDate.set(time, { time, date: isoDate(time), close, isLatestQuote: raw.is_latest_quote === true });
     }
     return [...byDate.values()].sort((a, b) => a.time - b.time);
   }
@@ -1101,11 +1120,13 @@
 
   function setAppView(view, { focus = false } = {}) {
     const next = view === "security" ? "security" : "rankings";
+    const viewChanged = state.activeView !== next;
     state.activeView = next;
     dom.securityEmpty.hidden = true;
     dom.rankingsView.hidden = next !== "rankings";
     dom.securityWorkspace.hidden = next !== "security";
     document.body.dataset.view = next;
+    if (viewChanged) window.scrollTo({ top: 0, behavior: "instant" });
     renderRecentSecurities();
     if (focus) {
       const target = next === "rankings" ? dom.rankingsView : dom.securityWorkspace;
@@ -1249,6 +1270,7 @@
     const viewEnd = Number.isFinite(end) ? end : dataEnd;
     const latestShort = latestShortPoint(state.shortSeries, viewStart, viewEnd);
     const latestPrice = lastPricePoint(state.prices, viewStart, viewEnd);
+    renderDetailSummary(viewStart, viewEnd);
 
     for (const element of [dom.kpiShort, dom.kpiChange, dom.kpiPrice, dom.kpiCoverage]) {
       element.classList.remove("is-loading");
@@ -1367,7 +1389,9 @@
 
     setText(dom.rankingAsOfDate, latestPosition ? formatDate(latestPosition) : "—");
     setText(dom.rankingSnapshotUpdated, snapshotTime ? `${formatDate(snapshotTime)} · ${formatRelativeDate(snapshotTime)}` : t("common.notProvided"));
-    setText(dom.rankingSource, state.rankingsMeta.source || "FCA ANSP");
+    const snapshotSource = state.rankingsMeta.source || "FCA ANSP";
+    setText(dom.rankingSource, /FCA.*ANSP/i.test(snapshotSource) ? "FCA · ANSP" : snapshotSource);
+    dom.rankingSource.title = snapshotSource;
     setText(
       dom.rankingCoverage,
       state.rankingsMeta.sourceTruncated
@@ -1420,6 +1444,112 @@
       count: integerFormatter.format(stats.count), total: integerFormatter.format(total),
     }));
     dom.snapshotStatsScope.classList.toggle("is-partial", Boolean(partial && stats.count));
+  }
+
+  function getRecentPositionRankings(items, limit = 8) {
+    return items.filter((item) => Number.isFinite(item.positionTime))
+      .sort((a, b) => b.positionTime - a.positionTime || a.rank - b.rank).slice(0, limit);
+  }
+
+  function renderRecentPositions() {
+    const items = getRecentPositionRankings(state.rankings);
+    dom.recentPositionList.replaceChildren();
+    dom.recentPositionEmpty.hidden = items.length > 0;
+    for (const item of items) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "recent-position-item";
+      const identity = document.createElement("span");
+      identity.className = "recent-position-identity";
+      const name = document.createElement("strong");
+      name.textContent = item.security.name;
+      name.title = item.security.name;
+      const code = document.createElement("small");
+      code.textContent = item.security.ticker !== "—" ? item.security.ticker : item.security.isin;
+      identity.append(name, code);
+      const value = document.createElement("strong");
+      value.className = "recent-position-value";
+      value.textContent = formatPercent(item.shortPercent);
+      const date = document.createElement("time");
+      date.dateTime = item.positionDate;
+      date.textContent = shortDateFormatter.format(new Date(item.positionTime));
+      date.title = formatDate(item.positionTime);
+      button.append(identity, value, date);
+      button.addEventListener("click", () => selectSecurity(item.security));
+      dom.recentPositionList.append(button);
+    }
+  }
+
+  function findSnapshotRanking(items, security) {
+    const isin = String(security?.isin || "").trim().toUpperCase();
+    if (!isin || isin === "—") return null;
+    return items.find((item) => item.security.isin.toUpperCase() === isin) || null;
+  }
+
+  function calculateDetailSummary(shortSeries, prices, start, end) {
+    const intervals = buildShortIntervals(shortSeries, "ansp")
+      .filter((item) => item.intervalEnd > start && item.time <= end);
+    // A latest quote can replace today's bar at the API boundary. It remains on
+    // the chart, but is not described as an established daily closing price.
+    const closes = prices.filter((item) => item.time >= start && item.time <= end &&
+      Number.isFinite(item.close) && !item.isLatestQuote).sort((a, b) => a.time - b.time);
+    const first = closes[0];
+    const last = closes[closes.length - 1];
+    const nodes = ["legacy", "ansp"].flatMap((regime) => buildShortIntervals(shortSeries, regime)
+      .filter((item) => item.time >= start && item.time <= end)
+      .map((item) => ({ ...item, regime })))
+      .sort((a, b) => b.time - a.time || (a.regime === "ansp" ? -1 : 1)).slice(0, 5);
+    return {
+      anspHigh: intervals.length ? Math.max(...intervals.map((item) => item.value)) : null,
+      anspLow: intervals.length ? Math.min(...intervals.map((item) => item.value)) : null,
+      priceHigh: closes.length ? Math.max(...closes.map((item) => item.close)) : null,
+      priceLow: closes.length ? Math.min(...closes.map((item) => item.close)) : null,
+      priceChange: closes.length >= 2 && first.close > 0 ? (last.close / first.close - 1) * 100 : null,
+      priceFirst: first?.time ?? null,
+      priceLast: last?.time ?? null,
+      nodes,
+    };
+  }
+
+  function renderDetailSummary(start, end) {
+    const ranking = findSnapshotRanking(state.rankings, state.selectedSecurity);
+    setText(dom.detailSnapshotRank, ranking ? `#${integerFormatter.format(ranking.rank)}` : "—");
+    setText(dom.detailSnapshotRankMeta, ranking ? t("glass.rankMeta", {
+      count: integerFormatter.format(state.rankingsMeta.sourceTotal ?? state.rankings.length),
+      percent: formatPercent(ranking.shortPercent),
+    }) : t("glass.rankAbsent"));
+    const summary = calculateDetailSummary(state.shortSeries, state.prices, start, end);
+    setText(dom.detailAnspHigh, formatPercent(summary.anspHigh));
+    setText(dom.detailAnspLow, formatPercent(summary.anspLow));
+    setText(dom.detailPriceHigh, formatCurrency(summary.priceHigh, state.currency));
+    setText(dom.detailPriceLow, formatCurrency(summary.priceLow, state.currency));
+    setText(dom.detailPriceChange, Number.isFinite(summary.priceChange)
+      ? `${summary.priceChange > 0 ? "+" : ""}${percentFormatter.format(summary.priceChange)}%` : "—");
+    dom.detailPriceChange.classList.toggle("is-positive", summary.priceChange > 0);
+    dom.detailPriceChange.classList.toggle("is-negative", summary.priceChange < 0);
+    setText(dom.detailPriceRangeMeta, Number.isFinite(summary.priceFirst) ? t("glass.closeRange", {
+      start: formatDate(summary.priceFirst), end: formatDate(summary.priceLast),
+    }) : t("glass.noCloses"));
+    dom.detailPositionNodes.replaceChildren();
+    dom.detailPositionNodesEmpty.hidden = summary.nodes.length > 0;
+    for (const node of summary.nodes) {
+      const row = document.createElement("li");
+      row.className = `detail-position-node is-${node.regime}`;
+      const regime = document.createElement("span");
+      regime.className = "detail-node-regime";
+      regime.textContent = t(node.regime === "ansp" ? "glass.nodeAnsp" : "glass.nodeLegacy");
+      const date = document.createElement("time");
+      date.dateTime = isoDate(node.time);
+      date.textContent = shortDateFormatter.format(new Date(node.time));
+      const value = document.createElement("strong");
+      value.textContent = formatPercent(node.value);
+      row.title = t("glass.nodeEffective", { date: formatDate(node.time) });
+      if (node.regime === "ansp" && Number.isFinite(node.point.anspPositionTime)) {
+        row.title += ` · ${t("chart.auditPositionDate")}: ${formatDate(node.point.anspPositionTime)}`;
+      }
+      row.append(regime, date, value);
+      dom.detailPositionNodes.append(row);
+    }
   }
 
   function renderRankingBars() {
@@ -1559,9 +1689,8 @@
 
   function getFilteredRankings() {
     const filter = state.rankingFilter.trim().toLocaleLowerCase(state.language);
-    const filtered = filter
-      ? state.rankings.filter((item) => rankingSearchText(item).includes(filter))
-      : [...state.rankings];
+    const filtered = state.rankings.filter((item) => matchesRankingChip(item, state.rankingChip) &&
+      (!filter || rankingSearchText(item).includes(filter)));
     const { key, direction } = state.rankingSort;
     const multiplier = direction === "desc" ? -1 : 1;
     return filtered.sort((a, b) => {
@@ -1577,6 +1706,23 @@
       }
       return result === 0 ? a.rank - b.rank : result * multiplier;
     });
+  }
+
+  function matchesRankingChip(item, chip) {
+    if (chip === "above2") return item.shortPercent >= 2;
+    if (chip === "above5") return item.shortPercent >= 5;
+    if (chip === "recent7") return Number.isFinite(item.positionTime) && !item.positionDateInFuture &&
+      Number.isFinite(item.ageDays) && item.ageDays >= 0 && item.ageDays < 7;
+    return true;
+  }
+
+  function updateRankingFilters() {
+    for (const button of dom.rankingFilterChips.querySelectorAll("button[data-ranking-chip]")) {
+      const active = button.dataset.rankingChip === state.rankingChip;
+      button.setAttribute("aria-pressed", String(active));
+      button.classList.toggle("is-active", active);
+    }
+    dom.rankingClearFiltersButton.hidden = !state.rankingFilter && state.rankingChip === "all";
   }
 
   function updateRankingSortHeaders() {
@@ -1648,6 +1794,7 @@
 
   function renderRankingTable() {
     const filtered = getFilteredRankings();
+    dom.rankingsContent.classList.toggle("is-filtered", Boolean(state.rankingFilter || state.rankingChip !== "all"));
     const totalPages = Math.max(1, Math.ceil(filtered.length / state.rankingPageSize));
     state.rankingPage = Math.max(1, Math.min(state.rankingPage, totalPages));
     const startIndex = (state.rankingPage - 1) * state.rankingPageSize;
@@ -1672,7 +1819,7 @@
     const shownEnd = filtered.length ? startIndex + pageItems.length : 0;
     setText(
       dom.rankingTableSummary,
-      state.rankingFilter
+      state.rankingFilter || state.rankingChip !== "all"
         ? t("ranking.filteredSummary", { all: integerFormatter.format(state.rankings.length), filtered: integerFormatter.format(filtered.length) })
         : t("ranking.loadedSummary", { count: integerFormatter.format(state.rankings.length) }),
     );
@@ -1688,7 +1835,8 @@
     dom.rankingPreviousPage.disabled = state.rankingPage <= 1;
     dom.rankingNextPage.disabled = state.rankingPage >= totalPages;
     updateRankingSortHeaders();
-    notifyRender("table", [state.rankingFilter, state.rankingSort.key, state.rankingSort.direction,
+    updateRankingFilters();
+    notifyRender("table", [state.rankingFilter, state.rankingChip, state.rankingSort.key, state.rankingSort.direction,
       state.rankingPage, state.rankingPageSize, filtered.length,
       pageItems.map((item) => [item.security.id, item.security.name, item.security.ticker, item.security.isin,
         item.rank, item.shortPercent, item.positionDate, item.ageDays]),
@@ -1700,7 +1848,12 @@
     renderSnapshotStatistics();
     renderRankingBars();
     renderRankingDistribution();
+    renderRecentPositions();
     renderRankingTable();
+    if (state.selectedSecurity) {
+      const bounds = state.chart?.getViewBounds();
+      renderDetailSummary(bounds?.start ?? -Infinity, bounds?.end ?? Infinity);
+    }
   }
 
   async function loadRankings({ silent = false } = {}) {
@@ -2153,6 +2306,7 @@
     state.shortMeta = {};
     state.priceMeta = {};
     state.currency = fallback.currency || "GBP";
+    renderDetailSummary(-Infinity, Infinity);
     setWorkspaceVisible(true);
     updateSecurityHeader(fallback);
     setKpisLoading(true);
@@ -2431,6 +2585,7 @@
       this.prices = [];
       this.observationTimes = [];
       this.currency = "GBP";
+      this.priceLabelFont = '600 11px "Bahnschrift", "Segoe UI", "Microsoft YaHei UI", sans-serif';
       this.dataStart = Date.now() - 365 * DAY;
       this.dataEnd = Date.now();
       this.viewStart = this.dataStart;
@@ -2444,15 +2599,15 @@
       this.onViewChange = options.onViewChange || (() => {});
       this.onRangeChange = options.onRangeChange || (() => {});
       this.colors = {
-        grid: "#e8edf3",
-        gridStrong: "#d4dde8",
-        text: "#68778c",
-        ink: "#14243b",
-        legacy: "#b67a23",
-        ansp: "#1763d6",
-        price: "#344962",
+        grid: "#e2ecee",
+        gridStrong: "#c8dce1",
+        text: "#647e88",
+        ink: "#183f51",
+        legacy: "#d9842b",
+        ansp: "#147f9e",
+        price: "#254c62",
         marker: "#8b94a3",
-        surface: "#ffffff",
+        surface: "#f8fcfc",
       };
 
       this.boundPointerMove = (event) => this.handlePointerMove(event);
@@ -2608,7 +2763,13 @@
       const height = this.lastHeight || this.canvas.clientHeight;
       const compact = width < 640;
       const left = compact ? 64 : 76;
-      const right = compact ? 18 : 58;
+      const latestPrice = lastPricePoint(this.prices, this.viewStart, this.viewEnd);
+      const priceLabel = latestPrice ? formatAxisPrice(latestPrice.close, this.currency) : "";
+      this.ctx.save();
+      this.ctx.font = this.priceLabelFont;
+      const priceLabelWidth = priceLabel ? Math.ceil(this.ctx.measureText(priceLabel).width) + 12 : 0;
+      this.ctx.restore();
+      const right = Math.max(compact ? 18 : 58, priceLabelWidth ? priceLabelWidth + 18 : 0);
       const top = 32;
       const bottom = compact ? 42 : 47;
       const gap = 60;
@@ -2622,6 +2783,8 @@
         right,
         plotWidth,
         plotRight: left + plotWidth,
+        priceLabel,
+        priceLabelWidth,
         upper: { top, bottom: top + upperHeight, height: upperHeight },
         lower: { top: top + upperHeight + gap, bottom: top + usable + gap, height: usable - upperHeight },
       };
@@ -2705,11 +2868,12 @@
       if (!shortBounds.hasData) this.drawPanelEmpty(upper, t("canvas.noShort"));
       if (!priceBounds.hasData) this.drawPanelEmpty(lower, t("canvas.noPrice"));
       this.drawCrosshair(shortBounds, priceBounds);
+      this.drawPriceLabel(priceBounds, lower);
     }
 
     drawPanelBackground(panel) {
       const ctx = this.ctx;
-      ctx.fillStyle = "#fbfbf9";
+      ctx.fillStyle = "#f0f7f8";
       ctx.fillRect(this.layout.left, panel.top, this.layout.plotWidth, panel.height);
       ctx.strokeStyle = this.colors.gridStrong;
       ctx.lineWidth = 1;
@@ -2896,17 +3060,24 @@
       ctx.lineWidth = 2.2;
       ctx.stroke();
 
-      const label = formatAxisPrice(latest.close, this.currency);
-      ctx.font = '600 11px "Bahnschrift", "Segoe UI", "Microsoft YaHei UI", sans-serif';
-      const labelWidth = ctx.measureText(label).width + 11;
-      const labelX = Math.min(this.layout.plotRight - labelWidth - 3, latestX + 7);
-      const labelY = Math.max(panel.top + 3, Math.min(panel.bottom - 21, latestY - 10));
+      ctx.restore();
+    }
+
+    drawPriceLabel(bounds, panel) {
+      const latest = lastPricePoint(this.prices, this.viewStart, this.viewEnd);
+      if (!latest || !this.layout.priceLabel) return;
+      const ctx = this.ctx;
+      const latestY = this.yForValue(latest.close, bounds, panel);
+      const labelX = this.layout.plotRight + 8;
+      const labelY = latestY - 9.5;
+      ctx.save();
+      ctx.font = this.priceLabelFont;
       ctx.fillStyle = this.colors.price;
-      ctx.fillRect(labelX, labelY, labelWidth, 19);
+      ctx.fillRect(labelX, labelY, this.layout.priceLabelWidth, 19);
       ctx.fillStyle = "#fff";
       ctx.textAlign = "left";
       ctx.textBaseline = "middle";
-      ctx.fillText(label, labelX + 5.5, labelY + 9.5);
+      ctx.fillText(this.layout.priceLabel, labelX + 6, latestY);
       ctx.restore();
     }
 
@@ -3117,6 +3288,9 @@
       dom.securitySearchInput.select();
     };
     dom.searchShortcutButton.addEventListener("click", focusSecuritySearch);
+    dom.navOverviewButton.addEventListener("click", () => showRankings({ updateUrl: true, focus: true }));
+    dom.navSearchButton.addEventListener("click", focusSecuritySearch);
+    dom.navSettingsButton.addEventListener("click", () => dom.settingsButton.click());
     document.addEventListener("keydown", (event) => {
       if (event.defaultPrevented || event.isComposing || event.altKey || document.querySelector("dialog[open]")) return;
       const searchChord = (event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "k";
@@ -3204,6 +3378,21 @@
     dom.rankingSearchInput.addEventListener("input", () => {
       state.rankingFilter = dom.rankingSearchInput.value;
       state.rankingPage = 1;
+      renderRankingTable();
+    });
+    dom.rankingFilterChips.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-ranking-chip]");
+      if (!button || !dom.rankingFilterChips.contains(button)) return;
+      if (!["all", "above2", "above5", "recent7"].includes(button.dataset.rankingChip)) return;
+      state.rankingChip = button.dataset.rankingChip;
+      state.rankingPage = 1;
+      renderRankingTable();
+    });
+    dom.rankingClearFiltersButton.addEventListener("click", () => {
+      state.rankingFilter = "";
+      state.rankingChip = "all";
+      state.rankingPage = 1;
+      dom.rankingSearchInput.value = "";
       renderRankingTable();
     });
     dom.rankingPageSize.addEventListener("change", () => {

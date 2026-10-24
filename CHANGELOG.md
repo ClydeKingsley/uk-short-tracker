@@ -4,6 +4,37 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-24
+
+### Changed
+
+- Redesigned the desktop workspace with a teal liquid-glass
+  shell, translucent navigation, warm numeric accents and compact data panels.
+- Aligned chart colours with the new material system and extended motion to the
+  new panels and range summaries, while preserving reduced-motion preferences.
+- Restore the top of the workspace when navigating between rankings and a security.
+
+### Added
+
+- ANSP threshold and recent-position-date filters that combine with table search,
+  sorting and pagination without changing whole-snapshot statistics.
+- The eight most recent constituent position dates in the loaded current snapshot.
+- Security detail reads for current ISIN rank, visible ANSP interval extremes,
+  daily closing-price extremes/return, and the last five visible regime-labelled nodes.
+
+### Fixed
+
+- Move the closing-price badge outside the plot into a measured right gutter,
+  keeping it level with the latest visible price without covering the series.
+- Keep the three overview panels together in a compact, bottom-aligned row above
+  the full-width ranking table, so long ranking pages do not stretch summary cards.
+- Let the current ranking page expand into the main page scroll without a nested
+  vertical scrollbar.
+- Centre toolbar, navigation and chart-control icons within their compact buttons,
+  and centre the brand mark at both desktop sizes.
+- Distinguish GBP pounds from GBp pence in price formatting. Closing-price summaries
+  exclude latest-quote observations and show their actual observation dates.
+
 ## [0.3.2] - 2026-10-23
 
 ### Fixed

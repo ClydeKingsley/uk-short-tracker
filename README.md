@@ -92,10 +92,16 @@ and then manually remove `%LOCALAPPDATA%\ShortTracker`.
 
 - searchable FCA securities by company name, ISIN, and reviewed ticker mapping;
 - the current ANSP ranking, preserving the FCA reportable-share/ISIN grain;
+- a compact liquid-glass workspace with Top 8, ANSP distribution and recent
+  position-date panels above a full-width ranking table;
+- ANSP threshold and recent-date filters combined with search and pagination,
+  while snapshot statistics continue to cover all loaded securities;
 - legacy named-disclosure history and ANSP history as separate series;
 - a regime boundary rather than a misleading continuous comparison;
 - current and historical FCA source provenance;
 - optional Yahoo Finance price history and latest observations;
+- per-security snapshot rank, visible ANSP extremes, daily-close range and return,
+  and recent regime-labelled position nodes;
 - Chinese and English interfaces.
 
 The disclosure regimes are not directly comparable. Legacy public data usually
