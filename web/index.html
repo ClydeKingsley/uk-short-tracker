@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light" />
-    <meta name="theme-color" content="#14223a" />
+    <meta name="theme-color" content="#117b97" />
     <meta
       id="pageDescription"
       name="description"
@@ -12,6 +12,7 @@
     />
     <title>UK Short Tracker · 英国净空头仓位追踪</title>
     <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/liquid-glass.css" />
     <script src="/i18n.js" defer></script>
     <script src="/app.js" defer></script>
   </head>
@@ -19,6 +20,20 @@
     <a class="skip-link" href="#main-content" data-i18n="skip.main">跳到主要内容</a>
 
     <div class="app-shell">
+      <nav class="workspace-rail" aria-label="Workspace">
+        <span class="rail-monogram" aria-hidden="true">S<span>t</span></span>
+        <button class="rail-button rail-overview" id="navOverviewButton" type="button" data-i18n-title="glass.navOverview" data-i18n-aria-label="glass.navOverview" title="市场总览" aria-label="市场总览">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></svg>
+        </button>
+        <button class="rail-button" id="navSearchButton" type="button" data-i18n-title="glass.navSearch" data-i18n-aria-label="glass.navSearch" title="搜索证券" aria-label="搜索证券">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
+        </button>
+        <span class="rail-divider" aria-hidden="true"></span>
+        <button class="rail-button" id="navSettingsButton" type="button" data-i18n-title="glass.navSettings" data-i18n-aria-label="glass.navSettings" title="同步与设置" aria-label="同步与设置">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3v18M12 3v18M19 3v18"/><path d="M2 8h6M9 16h6M16 8h6" stroke-width="4"/></svg>
+        </button>
+        <span class="rail-market" aria-hidden="true">UK</span>
+      </nav>
       <header class="topbar" aria-label="应用顶栏" data-i18n-aria-label="topbar.aria">
         <a class="brand" href="/" aria-label="UK Short Tracker 首页" data-i18n-aria-label="brand.home">
           <span class="brand-mark" aria-hidden="true">
@@ -177,7 +192,7 @@
         <section class="rankings-view" id="rankingsView" aria-labelledby="rankingsTitle">
           <header class="rankings-hero">
             <div class="rankings-intro">
-              <p class="eyebrow">FCA · AGGREGATED NET SHORT POSITIONS</p>
+              <p class="eyebrow">RESEARCH TERMINAL / UNITED KINGDOM</p>
               <h1 id="rankingsTitle" data-i18n="ranking.title">当前做空比例排行榜</h1>
               <p class="rankings-lead" data-i18n="ranking.lead">
                 按 FCA 当前 ANSP 快照中的公开汇总比例排序。点击公司即可进入个股仓位与收盘价双图。
@@ -305,6 +320,15 @@
               <p class="distribution-scope" id="rankingDistributionScope">—</p>
             </section>
 
+            <section class="recent-position-card" aria-labelledby="recentPositionTitle">
+              <header class="ranking-card-header">
+                <div><p class="eyebrow">POSITION DATES</p><h2 id="recentPositionTitle" data-i18n="glass.recentTitle">最近持仓日期</h2></div>
+                <span class="mini-orbit" aria-hidden="true">↗</span>
+              </header>
+              <div id="recentPositionList" class="recent-position-list"></div>
+              <p id="recentPositionEmpty" class="compact-empty" data-i18n="glass.recentEmpty">暂无持仓日期记录</p>
+            </section>
+
             <section class="ranking-table-card" aria-labelledby="rankingTableTitle">
               <header class="ranking-table-header">
                 <div>
@@ -330,6 +354,16 @@
                   </label>
                 </div>
               </header>
+
+              <div class="ranking-filter-bar">
+                <div class="filter-chips" id="rankingFilterChips" role="group" aria-label="ANSP filters">
+                  <button type="button" data-ranking-chip="all" aria-pressed="true" data-i18n="glass.filterAll">全部</button>
+                  <button type="button" data-ranking-chip="above2" aria-pressed="false" data-i18n="glass.filterAbove2">ANSP ≥ 2%</button>
+                  <button type="button" data-ranking-chip="above5" aria-pressed="false" data-i18n="glass.filterAbove5">ANSP ≥ 5%</button>
+                  <button type="button" data-ranking-chip="recent7" aria-pressed="false" data-i18n="glass.filterRecent7">持仓日近 7 天</button>
+                </div>
+                <button class="text-button" id="rankingClearFiltersButton" type="button" data-i18n="glass.clearFilters">清除筛选</button>
+              </div>
 
               <div class="ranking-table-scroll" tabindex="0" aria-label="排行榜表格，可横向滚动" data-i18n-aria-label="ranking.tableScrollAria">
                 <table class="ranking-table" id="rankingTable">
@@ -461,6 +495,7 @@
             </article>
           </section>
 
+          <div class="detail-analysis-grid">
           <section class="chart-card" aria-labelledby="chartTitle">
             <header class="chart-header">
               <div>
@@ -588,7 +623,25 @@
             <p class="sr-only" id="chartSummary" data-i18n="chart.summaryEmpty">尚未选择证券。</p>
           </section>
 
-          <section class="method-note" aria-labelledby="methodTitle">
+          <aside class="detail-insights" aria-labelledby="detailInsightsTitle">
+            <header class="ranking-card-header"><div><p class="eyebrow">SECURITY INTELLIGENCE</p><h2 id="detailInsightsTitle" data-i18n="glass.detailTitle">证券读数</h2></div></header>
+            <div class="detail-rank"><span data-i18n="glass.snapshotRank">当前快照排名</span><strong id="detailSnapshotRank">—</strong><small id="detailSnapshotRankMeta">—</small></div>
+            <div class="detail-range-heading"><span data-i18n="glass.rangeBasis">当前图表区间</span><i aria-hidden="true"></i></div>
+            <dl class="detail-metrics">
+              <div><dt data-i18n="glass.anspHigh">ANSP 最高</dt><dd id="detailAnspHigh">—</dd></div>
+              <div><dt data-i18n="glass.anspLow">ANSP 最低</dt><dd id="detailAnspLow">—</dd></div>
+              <div><dt data-i18n="glass.priceHigh">最高收盘</dt><dd id="detailPriceHigh">—</dd></div>
+              <div><dt data-i18n="glass.priceLow">最低收盘</dt><dd id="detailPriceLow">—</dd></div>
+              <div class="detail-return"><dt data-i18n="glass.priceChange">区间收盘变化</dt><dd id="detailPriceChange">—</dd></div>
+            </dl>
+            <p id="detailPriceRangeMeta" class="detail-range-meta">—</p>
+            <h3 class="detail-nodes-title" data-i18n="glass.positionNodes">区间最近仓位节点</h3>
+            <ol id="detailPositionNodes" class="detail-position-nodes"></ol>
+            <p id="detailPositionNodesEmpty" class="compact-empty" data-i18n="glass.nodesEmpty">区间内无仓位节点</p>
+          </aside>
+          </div>
+
+          <section class="method-note" id="methodology" aria-labelledby="methodTitle">
             <div class="method-icon" aria-hidden="true">i</div>
             <div>
               <h2 id="methodTitle" data-i18n="method.title">如何解读</h2>

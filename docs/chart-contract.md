@@ -4,6 +4,8 @@
 - **Primary comparison:** disclosed short-position percentage over time; price is contextual rather than a second-axis causal claim.
 - **Upper chart:** step-after trend, percent of issued share capital. A value begins at its effective `date` and holds only until `interval_end` or the next linked state. Legacy and ANSP are separate traces.
 - **Lower chart:** daily market-price line in the provider-reported currency, with the latest available observation highlighted.
+- **Price badge:** label the latest visible price in a measured gutter outside the plot's right edge, aligned to its price height; never overlay or clip the badge within the series area.
+- **Security summary:** calculate ANSP extremes from effective intervals overlapping the visible range, without mixing legacy values. Closing-price extremes and returns exclude latest-quote observations and state their actual observation dates. Snapshot rank matches the exact ISIN.
 - **Shared interaction:** one time domain, linked crosshair, linked drag/wheel zoom, and 1M / 3M / 6M / YTD / 1Y / 3Y / 5Y / MAX presets.
 - **ANSP event axis:** for each ISIN, order historic states by `became_historical_date`. The first state starts at the later of its constituent `position_date` and its RSL scope start; every later historic state and current state starts when the previous state became historical. A regressed raw `position_date` never moves a later state backwards.
 - **Initial scope:** FCA's first ANSP publication represented positions at midnight on 9 July 2026. Treat the initial RSL cohort (including `date_added = 13 July`) as in scope from 9 July; shares added after first publication enter on their actual RSL `date_added`.

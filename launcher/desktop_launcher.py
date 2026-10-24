@@ -1532,7 +1532,7 @@ def run_desktop(
                     height=900,
                     min_size=(960, 640),
                     resizable=True,
-                    background_color="#0d1728",
+                    background_color="#d5e5e7",
                     text_select=True,
                     zoomable=True,
                     confirm_close=False,
